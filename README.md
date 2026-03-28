@@ -68,6 +68,12 @@ tracking_history/           # Raw benchmark data across iterations
 - **Sealed Evaluation** — benchmark code is read-only so agents cannot game the metric
 - **Plateau Detection** — auto-stops when no improvement is found after configured rounds
 
+## Inspired By
+
+- [autoresearch](https://github.com/karpathy/autoresearch) — sealed evaluation + git-as-state-machine
+- [Orze](https://github.com/warlockee/orze) — decentralized orchestration + research agent + circuit breaker
+- [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) — multi-agent orchestration layer for Claude Code
+
 ## License
 
 MIT
