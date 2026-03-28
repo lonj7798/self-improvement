@@ -1,0 +1,11 @@
+{
+  "iterations": 0,
+  "setting_goal": false,
+  "setting_benchmark": false,
+  "setting_harness": false,
+  "best_score": null,
+  "current_milestone": null,
+  "plateau_consecutive_count": 0,
+  "circuit_breaker_count": 0,
+  "status": "idle"
+}

@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code config (skills live in agents/)
+.claude/
+
+# OMC state (ephemeral)
+.omc/
+
+# Worktrees (created at runtime)
+worktrees/
+
+# Cloned repos (user provides at runtime)
+want_to_improve/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
