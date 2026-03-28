@@ -65,15 +65,15 @@ Your worktree directory has been created by the orchestrator via `git worktree a
 
 Before making any changes, record the current baseline benchmark score by running the benchmark command once. Store this as `baseline_score` for your own reference (it is not part of the result schema, but you need it to detect regression).
 
-### Step 3 — Create Your Branch
+### Step 3 — Verify Your Branch
 
-Create a new git branch from the current HEAD of the repo:
+The orchestrator has already created your experiment branch (`experiment/round_{n}_executor_{id}`) via the worktree setup. Verify you are on the correct branch:
 
 ```
-experiment/round_{n}_executor_{id}
+git branch --show-current
 ```
 
-Replace `{n}` with the round number (parsed from `plan_id`, format `round_{N}_...`) and `{id}` with your executor identifier. Never commit directly to main or any existing branch.
+It should show `experiment/round_{n}_executor_{id}`. If the branch name does not match your executor_id and the round number from your plan, stop and report an infrastructure error. Never commit directly to main, the improvement branch, or any other executor's branch.
 
 ### Step 4 — Implement the Plan
 
@@ -87,13 +87,15 @@ Implement the changes described in `steps`, in order. Follow these constraints s
 
 ### Step 5 — Run Validation
 
-Before running the benchmark, run the validation script:
+Before running the benchmark, run the validation script from the project root, passing your worktree path:
 
 ```
-scripts/validate.sh plan.json
+{project_root}/scripts/validate.sh --worktree {worktree_dir} {plan_path}
 ```
 
-This script checks two things: (1) no sealed files were modified, (2) the plan schema is valid.
+Where `{project_root}` is the absolute path to the self-improvement project root (from your input arguments), `{worktree_dir}` is your worktree directory path, and `{plan_path}` is the absolute path to your plan JSON file.
+
+This script checks two things: (1) no sealed files were modified in your worktree, (2) the plan schema is valid.
 
 If validation fails, do not proceed to the benchmark. Capture the validation error output. Write a result with `status: "error"`, `failure_analysis.category: "scope_error"` or `"infrastructure"` as appropriate, and include the validation output in `failure_analysis.what`. Stop here.
 

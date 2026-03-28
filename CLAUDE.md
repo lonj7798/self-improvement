@@ -135,10 +135,17 @@ If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected
 
 For each approved plan, spawn **1 executor agent** (Invoke /si-executor) in parallel.
 
+**Executor-to-plan assignment**: Assign approved plans to executors in order. The first approved plan goes to `executor_1`, the second to `executor_2`, etc. The executor's numeric ID has no relation to the planner's alphabetic ID — the mapping is purely positional based on approval order.
+
 Each executor receives:
 - Its approved plan JSON file
 - A unique worktree directory: `worktrees/round_{n}_executor_{id}/`
 - The benchmark command and settings from `docs/user_defined/settings.json`
+
+Before spawning each executor, create the worktree and experiment branch:
+```
+git worktree add worktrees/round_{n}_executor_{id} -b experiment/round_{n}_executor_{id} improve/{goal_slug}
+```
 
 Collect result files from `worktrees/round_{n}_executor_{id}/result.json`.
 
@@ -255,6 +262,20 @@ When the loop exits:
 
 Where N = `number_of_agents` from `docs/user_defined/settings.json`.
 
+### Agent Invocation Arguments
+
+Exact argument strings to pass when spawning each agent:
+
+| Agent | Arguments |
+|---|---|
+| `si-researcher` | `iteration={N} repo_path={abs_path_to_want_to_improve} project_root={abs_path_to_project}` |
+| `si-planner` | `iteration={N} planner_id={planner_a\|planner_b\|...} project_root={abs_path_to_project}` |
+| `si-plan-critic` | `plan_path={abs_path_to_plan_json} harness_path={abs_path_to_harness_md} history_path={abs_path_to_iteration_history_dir}` |
+| `si-executor` | `plan_path={abs_path_to_plan_json} worktree_dir={abs_path_to_worktree} executor_id={executor_N} project_root={abs_path_to_project}` |
+| `si-github-manager` | `iteration={N} goal_slug={slug} result_paths={comma_separated_abs_paths_to_result_json} project_root={abs_path_to_project}` |
+
+All paths must be absolute. `{N}` = current iteration number (`iterations + 1`). `{slug}` = goal slug derived from `goal.md` objective (lowercase, underscored).
+
 ---
 
 ## Error Handling
@@ -285,7 +306,12 @@ On startup, read `docs/agent_defined/iteration_state.json`:
    - Skip sub-sections where `status == "completed"`
    - Re-run sub-sections where `status == "in_progress"` or `"failed"` (agent may have died mid-work)
 2. If `status == "completed"` — start next iteration (increment iteration, reset all sub-sections to `"pending"`)
-3. If file does not exist — start from iteration 1 (fresh run), create the file
+3. If `status == "failed"` — the previous iteration hit an unrecoverable error:
+   - Log the failed iteration number and `current_step` where it failed
+   - Check if Step 9b (counter updates) was completed — if not, complete it now (treat as no-winner iteration)
+   - Reset `iteration_state.json`: set status to `"pending"`, reset all sub-sections to `"pending"`
+   - Start the next iteration from Step 5
+4. If file does not exist — start from iteration 1 (fresh run), create the file
 
 ### Fallback: Inferred State
 

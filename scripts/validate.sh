@@ -100,9 +100,16 @@ check_sealed_files() {
     # Collect modified files: use diff against the improvement branch HEAD
     # In worktree mode, compare against the base commit; otherwise compare working tree
     if [[ -n "${WORKTREE_PATH}" ]]; then
-        # Compare worktree state against its branch point
+        # Compare worktree state against its branch point (the improvement branch)
+        # Find the parent branch by looking for improve/* or falling back to main/master
         local base_commit
-        base_commit=$(git -C "${GIT_DIR}" merge-base HEAD HEAD 2>/dev/null || echo "HEAD")
+        local improve_branch
+        improve_branch=$(git -C "${GIT_DIR}" branch -a --list 'improve/*' 2>/dev/null | head -1 | tr -d ' *' || true)
+        if [[ -z "${improve_branch}" ]]; then
+            # Fallback: find the merge-base with main or master
+            improve_branch=$(git -C "${GIT_DIR}" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || echo "main")
+        fi
+        base_commit=$(git -C "${GIT_DIR}" merge-base HEAD "${improve_branch}" 2>/dev/null || echo "HEAD~1")
         modified_files_str=$(git -C "${GIT_DIR}" diff --name-only "${base_commit}" 2>/dev/null || true)
         # Also include uncommitted changes
         local uncommitted
@@ -220,7 +227,7 @@ check_plan_schema() {
         exit 1
     fi
 
-    local required_fields="plan_id planner_id hypothesis approach_family critic_approved target_files steps expected_outcome"
+    local required_fields="plan_id planner_id round hypothesis approach_family critic_approved target_files steps expected_outcome history_reference"
     local missing=""
 
     for field in ${required_fields}; do
@@ -295,6 +302,40 @@ check_plan_schema() {
     fi
 
     ok "Approach family check passed: '${approach}' is valid."
+
+    # check: expected_outcome must have required sub-fields
+    local eo_fields="metric estimated_impact rationale"
+    local eo_missing=""
+    for field in ${eo_fields}; do
+        val=$(jq -r --arg f "${field}" '.expected_outcome[$f]' "${plan_file}" 2>/dev/null)
+        if [[ "${val}" == "null" || -z "${val}" ]]; then
+            eo_missing="${eo_missing} ${field}"
+        fi
+    done
+
+    if [[ -n "${eo_missing}" ]]; then
+        err "expected_outcome is missing required sub-fields:${eo_missing}"
+        exit 1
+    fi
+
+    ok "expected_outcome sub-fields are complete."
+
+    # check: history_reference must have required sub-fields
+    local hr_fields="builds_on avoids"
+    local hr_missing=""
+    for field in ${hr_fields}; do
+        val=$(jq -r --arg f "${field}" '.history_reference[$f]' "${plan_file}" 2>/dev/null)
+        if [[ "${val}" == "null" || -z "${val}" ]]; then
+            hr_missing="${hr_missing} ${field}"
+        fi
+    done
+
+    if [[ -n "${hr_missing}" ]]; then
+        err "history_reference is missing required sub-fields:${hr_missing}"
+        exit 1
+    fi
+
+    ok "history_reference sub-fields are complete."
 }
 
 # ── check c: result schema validation ──────────────────────────────────────────
@@ -378,6 +419,25 @@ check_result_schema() {
         fi
 
         ok "failure_analysis is complete for non-success status."
+
+        # Validate failure_analysis.category enum
+        local fa_category
+        fa_category=$(jq -r '.failure_analysis.category' "${result_file}" 2>/dev/null)
+        local valid_categories="oom timeout regression logic_error scope_error infrastructure benchmark_parse_error sealed_file_violation"
+        local cat_valid=0
+        for cat in ${valid_categories}; do
+            if [[ "${fa_category}" == "${cat}" ]]; then
+                cat_valid=1
+                break
+            fi
+        done
+
+        if [[ ${cat_valid} -eq 0 ]]; then
+            err "failure_analysis.category '${fa_category}' is not valid. Must be one of: ${valid_categories}"
+            exit 1
+        fi
+
+        ok "failure_analysis.category '${fa_category}' is valid."
     fi
 }
 

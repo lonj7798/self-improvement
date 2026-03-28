@@ -14,6 +14,7 @@ This document defines the canonical JSON schemas for all messages exchanged betw
 6. [Approach Family Taxonomy](#6-approach-family-taxonomy)
 7. [Failure Analysis Object](#7-failure-analysis-object)
 8. [Iteration State](#8-iteration-state)
+9. [Merge Report](#9-merge-report)
 
 ---
 
@@ -204,7 +205,6 @@ After each iteration the orchestrator writes one history record capturing what w
 | `approach_family` | string | Approach family tag from the losing plan. |
 | `hypothesis` | string | The hypothesis that was refuted or failed to confirm. |
 | `failure_analysis` | object | A [Failure Analysis Object](#7-failure-analysis-object) with structured breakdown of why this plan lost. |
-| `lesson` | string | Distilled lesson for future planners and the researcher to avoid repeating this mistake. |
 
 ### Example
 
@@ -229,8 +229,7 @@ After each iteration the orchestrator writes one history record capturing what w
         "why": "Dropout caused underfitting on small dataset — regularization counterproductive",
         "category": "regression",
         "lesson": "Don't add regularization when training data is limited"
-      },
-      "lesson": "Don't add regularization when data is limited"
+      }
     }
   ],
   "research_brief_id": "round_1"
@@ -405,5 +404,63 @@ Tracks the progress of a single iteration for robust resumability. The orchestra
     "cleanup_done": false
   },
   "user_ideas_consumed": []
+}
+```
+
+---
+
+## 9. Merge Report
+
+**Producer:** github_manager
+**Consumer:** orchestrator
+
+After each tournament, the github_manager produces a merge report summarizing the outcome. The orchestrator reads this to update counters and record iteration history.
+
+**File location:** `docs/agent_defined/merge_reports/round_{n}.json`
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `iteration` | integer | The iteration number this report describes. |
+| `goal_slug` | string | Short identifier for the improvement goal. |
+| `winner` | object or null | The winning executor's details, or `null` if no winner. See winner fields below. |
+| `archived` | array of strings | List of archive tag names created for losing branches. Format: `archive/round_{n}_executor_{id}`. |
+| `regressions_detected` | boolean | Whether any re-benchmark regression was detected during the tournament. |
+| `re_benchmark_score` | number or null | The re-benchmark score on the merged improvement branch. `null` if no winner. |
+| `status` | string | One of: `merged`, `no_improvement`, `no_winner`, `all_rejected`. |
+| `reason` | string or null | Explanation when status is not `merged`. `null` when status is `merged`. |
+
+**Winner object fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `executor_id` | string | The winning executor's identifier. |
+| `branch` | string | The experiment branch that was merged. Format: `experiment/round_{n}_executor_{id}`. |
+| `hypothesis` | string | The hypothesis from the winning plan. |
+| `score_before` | number | Benchmark score before the merge (on `improve/{goal_slug}`). |
+| `score_after` | number | Benchmark score after the merge (from executor's result). |
+
+### Example
+
+```json
+{
+  "iteration": 3,
+  "goal_slug": "reduce_latency",
+  "winner": {
+    "executor_id": "executor_2",
+    "branch": "experiment/round_3_executor_2",
+    "hypothesis": "Cache intermediate results in the hot path",
+    "score_before": 142.3,
+    "score_after": 118.7
+  },
+  "archived": [
+    "archive/round_3_executor_1",
+    "archive/round_3_executor_3"
+  ],
+  "regressions_detected": false,
+  "re_benchmark_score": 118.7,
+  "status": "merged",
+  "reason": null
 }
 ```
