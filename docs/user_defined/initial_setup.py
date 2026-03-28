@@ -152,7 +152,15 @@ def step0_claude_setup() -> bool:
                 shutil.copytree(item, target)
     print("  Copied claude/ → .claude/ (agents + skills)")
 
-    print("All agents and skills installed.")
+    # Copy settings.json (Stop hook + env config)
+    settings_src = src / "settings.json"
+    settings_dst = dst / "settings.json"
+    if settings_src.exists():
+        dst.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(settings_src, settings_dst)
+        print("  Copied claude/settings.json → .claude/settings.json")
+
+    print("All agents, skills, and settings installed.")
     return True
 
 

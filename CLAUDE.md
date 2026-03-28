@@ -23,7 +23,7 @@ If you encounter an unexpected error not covered above, log it, attempt recovery
 
 ## Inputs
 
-Read these files at startup and re-read them at the beginning of each iteration:
+Read these files at startup, at the beginning of each iteration, **and before each major step** (research, planning, execution, tournament). The user may adjust settings on the fly — `number_of_agents`, `max_iterations`, `number_of_max_critics`, `target_value`, `sealed_files`, etc. — and may add new ideas to `idea.md` or update `goal.md` at any time. Always use the latest values from disk, not cached values from earlier in the iteration.
 
 | File | Purpose |
 |---|---|

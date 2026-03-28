@@ -1,0 +1,19 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check_loop_running.sh",
+            "timeout": 5,
+            "statusMessage": "Checking improvement loop status..."
+          }
+        ]
+      }
+    ]
+  }
+}

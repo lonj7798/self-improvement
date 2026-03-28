@@ -35,6 +35,7 @@ Verify `claude/` source and install to `.claude/`.
 ```bash
 cp -r claude/agents/.  .claude/agents/
 cp -r claude/skills/.  .claude/skills/
+cp claude/settings.json .claude/settings.json
 ```
 
 If any files are missing, report which ones and stop.
