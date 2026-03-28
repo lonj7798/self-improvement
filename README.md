@@ -1,10 +1,21 @@
 # Self-Improvement Loop
 
-An AI agent orchestration system that iteratively improves any GitHub repository using a tournament selection model.
+A general-purpose evolutionary code improvement engine powered by Claude Code. Given any GitHub repository and a measurable goal, it spawns N parallel AI agent pairs that iteratively improve the codebase through a tournament selection model. The loop continues autonomously until the goal is met or a stop condition fires.
 
 ## What This Does
 
-You give it a repo and a goal. It spawns multiple AI agents that independently propose and test improvements. The best result wins and merges. Repeat until the goal is met.
+You point it at a repository and define a measurable objective (e.g., "improve test pass rate to 95%", "reduce inference latency below 50ms"). The system then:
+
+1. **Researches** the codebase to identify improvement opportunities
+2. **Generates** N independent improvement hypotheses in parallel, each with a concrete plan
+3. **Executes** each plan in an isolated git worktree so experiments don't interfere
+4. **Benchmarks** every change against a sealed evaluation (agents cannot modify the benchmark)
+5. **Selects** the best-performing change via tournament and merges it
+6. **Records** every result — winners and losers alike — as institutional memory that informs future iterations
+
+The core invariant: **every improvement is benchmarked, every result is recorded, and only the best change advances.**
+
+This runs fully autonomously once started. No human intervention needed between iterations. The system stops when the target is reached, a plateau is detected, the max iteration count is hit, or a circuit breaker fires after repeated failures.
 
 ## Setup
 
@@ -66,13 +77,82 @@ tracking_history/                # Raw benchmark data + progress chart
 
 ## Key Concepts
 
-- **Tournament Selection** — N parallel experiments per iteration, single winner merges
-- **Institutional Memory** — every result (win or lose) is recorded for future planning
-- **Harness Rules** — one hypothesis per plan, no repeating the same approach family 3x, diversity within each round
-- **Sealed Evaluation** — benchmark code is read-only so agents cannot game the metric
-- **Plateau Detection** — auto-stops when no improvement is found after configured rounds
-- **Circuit Breaker** — halts after consecutive no-winner iterations for human review
-- **Resumability** — can resume from any point after interruption via iteration state tracking
+- **Tournament Selection** — N parallel experiments per iteration, single winner merges. All candidates benchmark against the same baseline commit, so scores are directly comparable. Ties go to the simpler change.
+- **Institutional Memory** — every result (win or lose) is recorded with structured failure analysis. Planners must read the full history before proposing new hypotheses, preventing the system from rediscovering dead ends.
+- **One Hypothesis Per Plan** — each plan tests exactly one idea. If the benchmark improves, you know why. If it regresses, you know what to revert. Multi-hypothesis plans are rejected by the critic.
+- **Approach Family Taxonomy** — every plan is tagged with a category (architecture, training_config, data, optimization, etc.). The system tracks which families are working and prevents overexploitation of a single family (max 3 consecutive wins from the same family).
+- **Harness Rules** — enforced by a critic agent before execution: one hypothesis per plan (H001), no repeating the same approach family 3x (H002), diversity within each round (H003). Custom rules can be added.
+- **Sealed Evaluation** — benchmark code is marked read-only via `sealed_files` in settings. `validate.sh` enforces this with both git diff checks and SHA-256 hash verification. Agents cannot game the metric.
+- **Research-Driven Planning** — a dedicated researcher agent explores the codebase, checks open issues, searches papers, and produces a ranked research brief before planners start. User-provided ideas in `idea.md` take priority.
+- **Plateau Detection** — auto-stops when improvement falls below a threshold for N consecutive iterations.
+- **Circuit Breaker** — halts after consecutive no-winner iterations, indicating a systemic problem that needs human review.
+- **Resumability** — the system tracks within-iteration progress in `iteration_state.json`. If interrupted at any step, it resumes from exactly where it left off without re-running completed work.
+
+## How It Works (Detailed)
+
+### The Loop
+
+```
+while goal not met:
+    1. Read goal + history + harness rules
+    2. Researcher explores repo → produces research brief
+    3. N planners each write 1 plan (1 hypothesis each)
+    4. Critic validates each plan against harness rules
+    5. N executors run approved plans in parallel (isolated worktrees)
+    6. Tournament: best benchmark score wins → merge to improve/ branch
+    7. Record everything (winners + losers + lessons)
+    8. Update visualization (progress chart)
+    9. Check stop conditions
+```
+
+### Git Strategy
+
+The system uses a branch-per-experiment model:
+
+- **`improve/{goal_slug}`** — accumulation branch. Only winning changes merge here. `git log` shows a clean history of improvements with scores.
+- **`experiment/round_{n}_executor_{id}`** — short-lived branches for each experiment. Created via `git worktree add` for full isolation.
+- **`archive/round_{n}_executor_{id}`** — losing branches are tagged before deletion so commits remain reachable.
+
+### Stop Conditions
+
+| Condition | When |
+|-----------|------|
+| Target reached | `best_score` meets or exceeds `target_value` |
+| Plateau | Improvement < `plateau_threshold` for `plateau_window` consecutive iterations |
+| Max iterations | `iterations` >= `max_iterations` |
+| Circuit breaker | `circuit_breaker_threshold` consecutive iterations with no winner |
+
+### Configuration
+
+All configuration lives in `docs/user_defined/settings.json`:
+
+```json
+{
+  "number_of_agents": 3,
+  "benchmark_command": "python run_eval.py",
+  "benchmark_direction": "higher_is_better",
+  "max_iterations": 50,
+  "plateau_threshold": 0.01,
+  "plateau_window": 3,
+  "target_value": 95.0,
+  "sealed_files": ["benchmark/eval.py"],
+  "circuit_breaker_threshold": 3
+}
+```
+
+## Data Contracts
+
+All inter-agent communication follows strict JSON schemas defined in `docs/theory/data_contracts.md`:
+
+| Schema | Producer | Consumer |
+|--------|----------|----------|
+| Plan Document | planner | critic, executor |
+| Benchmark Result | executor | github-manager |
+| Research Brief | researcher | planners |
+| Iteration History | orchestrator | planners, researcher |
+| Merge Report | github-manager | orchestrator |
+| Visualization Data | orchestrator | plot_progress.py |
+| Iteration State | orchestrator | orchestrator (resume) |
 
 ## Inspired By
 
