@@ -1,7 +1,7 @@
 ---
 name: si-plan-creator
 description: Create a plan document with one testable hypothesis following data contract schema. Internal planner sub-skill.
-user-invocable: false
+tools: Read, Grep, Glob, Write
 ---
 
 # Plan Creator Skill

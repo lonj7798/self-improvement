@@ -1,7 +1,7 @@
 ---
 name: si-plan-architect
 description: Review a plan for architectural soundness, testability, novelty, and scope. Internal planner sub-skill.
-user-invocable: false
+tools: Read, Grep, Glob
 ---
 
 # Plan Architect Skill

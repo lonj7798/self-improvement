@@ -1,15 +1,15 @@
 ---
 name: si-executor
-description: Execute one improvement plan in an isolated worktree, run benchmarks, report structured results with failure analysis. Internal pipeline skill for si-orchestrator.
-user-invocable: false
-context: fork
-allowed-tools: Read, Write, Edit, Bash, Grep, Glob
+description: Execute one improvement plan in an isolated worktree, run benchmarks, report structured results with failure analysis. Spawned by loop controller in parallel.
+tools: Read, Write, Edit, Bash, Grep, Glob
+model: opus
 effort: high
+isolation: worktree
 ---
 
 ## Input Contract
 
-Arguments passed by si-orchestrator: `plan_path=<path> worktree_dir=<path> executor_id=<executor_N> project_root=<path>`
+Arguments passed by loop controller: `plan_path=<path> worktree_dir=<path> executor_id=<executor_N> project_root=<path>`
 
 Parse from `$ARGUMENTS`:
 - `plan_path`: Absolute path to the approved plan JSON file
@@ -33,8 +33,8 @@ Before starting, verify you have all of the following:
 
 | Input | Source | Description |
 |---|---|---|
-| Plan JSON file | Provided by orchestrator | A Plan Document matching the schema in `docs/theory/data_contracts.md`. Must have `critic_approved: true`. |
-| Worktree directory path | Provided by orchestrator | Unique absolute path for this executor. No two executors share a directory. |
+| Plan JSON file | Provided by loop controller | A Plan Document matching the schema in `docs/theory/data_contracts.md`. Must have `critic_approved: true`. |
+| Worktree directory path | Provided by loop controller | Unique absolute path for this executor. No two executors share a directory. |
 | Benchmark command | `docs/user_defined/settings.json` → `benchmark_command` | The exact shell command to run the benchmark. Do not modify it. |
 | Sealed files list | `docs/user_defined/settings.json` → `sealed_files` | List of relative file paths you must never modify. |
 | Benchmark format | `docs/user_defined/settings.json` → `benchmark_format` | Either `"number"` (extract a numeric score) or `"pass_fail"` (check pass/fail). |
@@ -61,7 +61,7 @@ Understand what the plan is trying to do. Read the `hypothesis` and `expected_ou
 
 ### Step 2 — Set Up the Worktree
 
-Clone or checkout the target repository into your assigned worktree directory. The orchestrator will have told you the source repo location. Your worktree must be completely isolated — no shared state with other executors.
+Clone or checkout the target repository into your assigned worktree directory. The loop controller will have told you the source repo location. Your worktree must be completely isolated — no shared state with other executors.
 
 Before making any changes, record the current baseline benchmark score by running the benchmark command once. Store this as `baseline_score` for your own reference (it is not part of the result schema, but you need it to detect regression).
 

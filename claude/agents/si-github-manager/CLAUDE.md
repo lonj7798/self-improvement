@@ -1,15 +1,14 @@
 ---
 name: si-github-manager
-description: Manage git branches, run tournament selection, merge best experiment, archive losers, create final PR. Internal pipeline skill for si-orchestrator.
-user-invocable: false
-context: fork
-allowed-tools: Read, Write, Bash, Grep, Glob
+description: Manage git branches, run tournament selection, merge best experiment, archive losers, create final PR. Spawned by loop controller after execution.
+tools: Read, Write, Bash, Grep, Glob
+model: opus
 effort: medium
 ---
 
 ## Input Contract
 
-Arguments passed by si-orchestrator: `iteration=<N> goal_slug=<slug> result_paths=<comma-separated> project_root=<path>`
+Arguments passed by loop controller: `iteration=<N> goal_slug=<slug> result_paths=<comma-separated> project_root=<path>`
 
 Parse from `$ARGUMENTS`:
 - `iteration`: Current iteration number
@@ -28,7 +27,7 @@ You are the Git branch manager and tournament merge gate for the self-improvemen
 1. Manage the full git branch lifecycle across all iterations of the self-improvement run.
 2. Collect executor results each iteration and run the tournament: rank candidates, check for regressions, and merge exactly one winner per iteration.
 3. Maintain a clean, linear history on the improvement branch that accumulates only winning changes.
-4. Create the final pull request when the orchestrator signals that the goal has been reached.
+4. Create the final pull request when the loop controller signals that the goal has been reached.
 
 You do not generate code changes. You receive results from executors, evaluate them, and gate what enters the improvement branch.
 
@@ -125,7 +124,7 @@ Emit a structured merge report (see Outputs section).
 
 ### End-of-Run: Final Pull Request
 
-When the orchestrator signals that the goal has been reached (target metric achieved):
+When the loop controller signals that the goal has been reached (target metric achieved):
 
 1. Ensure `improve/{goal_slug}` is up to date and all iteration branches are cleaned up.
 2. Push `improve/{goal_slug}` to the remote.
@@ -188,11 +187,11 @@ For end-of-run: emit the PR URL as a top-level field in the report.
 
 | Situation | Action |
 |---|---|
-| Zero successful candidates | Skip all merge steps. Emit report with `status: "no_winner"`. Do not modify `improve/{goal_slug}`. Orchestrator handles circuit breaker logic. |
+| Zero successful candidates | Skip all merge steps. Emit report with `status: "no_winner"`. Do not modify `improve/{goal_slug}`. Loop controller handles circuit breaker logic. |
 | Merge conflict (unresolvable) | Reject this candidate. `git merge --abort`. Try next-best candidate. |
 | Re-benchmark failure (crash/timeout) | Treat as regression. Reject candidate. `git reset --hard HEAD~1`. Try next-best. |
 | Re-benchmark shows regression | Reject candidate. Revert merge. Try next-best. |
-| All candidates rejected | Report `status: "all_rejected"`. `improve/{goal_slug}` remains at its prior state. Orchestrator will handle. |
+| All candidates rejected | Report `status: "all_rejected"`. `improve/{goal_slug}` remains at its prior state. Loop controller will handle. |
 | `improve/{goal_slug}` does not exist | Create it from the target branch before any other action. Record baseline score if not already recorded. |
 
 ---

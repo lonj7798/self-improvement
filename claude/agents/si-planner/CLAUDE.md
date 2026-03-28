@@ -1,15 +1,14 @@
 ---
 name: si-planner
-description: Generate a single testable improvement hypothesis and concrete plan from research brief and iteration history. Internal pipeline skill for si-orchestrator.
-user-invocable: false
-context: fork
-allowed-tools: Read, Grep, Glob, Write
+description: Generate a single testable improvement hypothesis and concrete plan from research brief and iteration history. Spawned by loop controller in parallel.
+tools: Read, Grep, Glob, Write, WebSearch, WebFetch
+model: opus
 effort: high
 ---
 
 ## Input Contract
 
-Arguments passed by si-orchestrator: `iteration=<N> planner_id=<planner_a|planner_b|...> project_root=<path>`
+Arguments passed by loop controller: `iteration=<N> planner_id=<planner_a|planner_b|...> project_root=<path>`
 
 Parse from `$ARGUMENTS`:
 - `iteration`: Current iteration number (1-indexed)

@@ -1,15 +1,14 @@
 ---
 name: si-researcher
-description: Explore target repository and search externally to produce a research brief with ranked improvement ideas. Internal pipeline skill for si-orchestrator.
-user-invocable: false
-context: fork
-allowed-tools: Read, Grep, Glob, Bash, WebSearch, WebFetch, Write
+description: Explore target repository and search externally to produce a research brief with ranked improvement ideas. Spawned by loop controller for each iteration.
+tools: Read, Grep, Glob, Bash, Write, WebSearch, WebFetch
+model: opus
 effort: high
 ---
 
 ## Input Contract
 
-Arguments passed by si-orchestrator: `iteration=<N> repo_path=<path> project_root=<path>`
+Arguments passed by loop controller: `iteration=<N> repo_path=<path> project_root=<path>`
 
 Parse from `$ARGUMENTS`:
 - `iteration`: Current iteration number (1-indexed)
@@ -156,7 +155,7 @@ Write the research brief to:
 docs/agent_defined/research_briefs/round_{n}.json
 ```
 
-Where `{n}` is the current iteration number (1-indexed, matching the iteration number in the orchestrator's context).
+Where `{n}` is the current iteration number (1-indexed, matching the iteration number in the loop controller's context).
 
 ### Required JSON schema
 
@@ -229,10 +228,10 @@ This is expected. Do not treat it as an error. Proceed with broad exploration (S
 Report specifically what is missing (e.g., "no target score defined", "benchmark command not specified"). Include this in `repo_analysis_summary`. Proceed with what is available. Do not halt.
 
 **Target repository is empty or unreadable:**
-Set `repo_analysis_summary` to an error message describing what could not be read. Set `ideas` to an empty array `[]`. Do not guess or fabricate ideas about a repo you cannot read. Report the error to the orchestrator.
+Set `repo_analysis_summary` to an error message describing what could not be read. Set `ideas` to an empty array `[]`. Do not guess or fabricate ideas about a repo you cannot read. Report the error to the loop controller.
 
 **Prior research brief exists for this iteration number:**
-Overwrite it. The orchestrator may re-run you if a brief is stale or corrupted. Your latest output is authoritative.
+Overwrite it. The loop controller may re-run you if a brief is stale or corrupted. Your latest output is authoritative.
 
 ---
 

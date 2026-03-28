@@ -1,7 +1,7 @@
 ---
 name: si-plan-critic
-description: Validate a plan against harness rules H001/H002/H003, enforce sealed files, set critic_approved flag. Internal pipeline skill invoked by si-orchestrator after planning.
-user-invocable: false
+description: Validate a plan against harness rules H001/H002/H003, enforce sealed files, set critic_approved flag. Invoked by loop controller after planning.
+tools: Read, Grep, Glob, Write
 ---
 
 ## Input Contract

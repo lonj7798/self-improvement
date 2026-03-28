@@ -1,5 +1,5 @@
 {
-  "claude_setting": false,
+  "si_claude_setting": true,
   "number_of_agents": 3,
   "number_of_max_critics": 3,
   "current_repo_url": "",

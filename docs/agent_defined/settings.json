@@ -1,8 +1,8 @@
 {
   "iterations": 0,
-  "setting_goal": false,
-  "setting_benchmark": false,
-  "setting_harness": false,
+  "si_setting_goal": false,
+  "si_setting_benchmark": false,
+  "si_setting_harness": false,
   "best_score": null,
   "current_milestone": null,
   "plateau_consecutive_count": 0,
