@@ -13,28 +13,33 @@ This document defines the canonical JSON schemas for all messages exchanged betw
 5. [Visualization Data](#5-visualization-data)
 6. [Approach Family Taxonomy](#6-approach-family-taxonomy)
 7. [Failure Analysis Object](#7-failure-analysis-object)
+8. [Iteration State](#8-iteration-state)
 
 ---
 
 ## 1. Plan Document
 
 **Producer:** planner
-**Consumer:** executor
+**Consumer:** critic, executor
 
 A plan document encodes a single, testable hypothesis along with the ordered steps needed to implement it. Each planner produces exactly one plan per round. The critic must approve the plan before the executor acts on it.
 
 ### Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `plan_id` | string | Unique identifier scoped to a round and planner. Format: `round_{N}_{planner_id}`. |
-| `planner_id` | string | Identifier of the planner agent that produced this plan. |
-| `hypothesis` | string | A single, falsifiable hypothesis. Must be specific enough to determine whether it was confirmed or refuted by the benchmark result. |
-| `approach_family` | string | Structured tag from the [Approach Family Taxonomy](#6-approach-family-taxonomy). Used for deduplication and history analysis. |
-| `critic_approved` | boolean | Set to `true` by the critic after review. Plans with `false` must not be executed. |
-| `target_files` | array of strings | Relative paths to the files the executor is permitted to modify. Acts as an implicit scope boundary. |
-| `steps` | array of strings | Ordered list of concrete changes to make. Each step should be independently understandable. |
-| `expected_outcome` | string | Human-readable prediction of what improvement the executor should observe if the hypothesis is correct. |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `plan_id` | string | yes | Unique identifier scoped to a round and planner. Format: `round_{N}_{planner_id}`. |
+| `planner_id` | string | yes | Identifier of the planner agent that produced this plan. |
+| `round` | integer | yes | The iteration number this plan belongs to. |
+| `hypothesis` | string | yes | A single, falsifiable hypothesis. Must be specific enough to determine whether it was confirmed or refuted by the benchmark result. |
+| `approach_family` | string | yes | Structured tag from the [Approach Family Taxonomy](#6-approach-family-taxonomy). Used for deduplication and history analysis. |
+| `critic_approved` | boolean | yes | Set to `true` by the critic after review. Plans with `false` must not be executed. |
+| `target_files` | array of strings | yes | Relative paths to the files the executor is permitted to modify. Acts as an implicit scope boundary. |
+| `steps` | array of objects | yes | Ordered list of concrete changes. Each object has fields: `step` (integer), `file` (string), `change` (string — exact description of change). |
+| `expected_outcome` | object | yes | Structured prediction. Fields: `metric` (string — metric from goal.md), `estimated_impact` (string — quantified or qualified estimate), `rationale` (string — why this impact is expected). |
+| `history_reference` | object | yes | Links to prior iterations. Fields: `builds_on` (string — prior success this extends, or `"none"`), `avoids` (string — prior failure this sidesteps, and how). |
+| `critic_review` | object | no | Set by the critic. Fields: `h001_hypothesis_count`, `h002_family_streak`, `h003_intra_round_diversity`, `schema_valid`, `history_aware` (all `"pass"` or `"fail"`), `verdict` (`"approved"` or `"rejected"`), `rejection_reason` (string or null). |
+| `architect_review` | object | no | Set by the plan architect (advisory only — does not gate execution). Fields: `verdict` (`"approve"` or `"reject"`), `feedback` (string), `structural_concerns` (array of strings). |
 
 ### Example
 
@@ -42,12 +47,33 @@ A plan document encodes a single, testable hypothesis along with the ordered ste
 {
   "plan_id": "round_1_planner_a",
   "planner_id": "planner_a",
+  "round": 1,
   "hypothesis": "Switching to AdamW optimizer will improve convergence",
   "approach_family": "training_config",
   "critic_approved": true,
   "target_files": ["train.py"],
-  "steps": ["Replace SGD with AdamW", "Set lr=0.001, weight_decay=0.01"],
-  "expected_outcome": "~3% improvement in val_loss"
+  "steps": [
+    { "step": 1, "file": "train.py", "change": "Replace SGD optimizer with AdamW" },
+    { "step": 2, "file": "train.py", "change": "Set lr=0.001, weight_decay=0.01" }
+  ],
+  "expected_outcome": {
+    "metric": "val_loss",
+    "estimated_impact": "~3% improvement",
+    "rationale": "AdamW handles weight decay correctly and converges faster on similar architectures"
+  },
+  "history_reference": {
+    "builds_on": "none — first iteration",
+    "avoids": "none — first iteration"
+  },
+  "critic_review": {
+    "h001_hypothesis_count": "pass",
+    "h002_family_streak": "pass",
+    "h003_intra_round_diversity": "pass",
+    "schema_valid": "pass",
+    "history_aware": "pass",
+    "verdict": "approved",
+    "rejection_reason": null
+  }
 }
 ```
 
@@ -66,15 +92,15 @@ A benchmark result records the outcome of executing a plan. The executor fills t
 |---|---|---|
 | `executor_id` | string | Identifier of the executor agent that ran the plan. |
 | `plan_id` | string | The `plan_id` from the plan document this result corresponds to. Links result back to plan. |
-| `benchmark_score` | number | Numeric value of the primary metric. Higher is better unless otherwise specified in `harness.md`. |
+| `benchmark_score` | number | Numeric value of the primary metric. Higher is better unless otherwise specified in `settings.json`. |
 | `benchmark_raw` | string | Raw stdout/output string from the benchmark run, preserved verbatim for debugging. |
-| `status` | string | One of: `success`, `failed`, `error`, `timeout`. See status definitions below. |
+| `status` | string | One of: `success`, `regression`, `error`, `timeout`. See status definitions below. |
 | `failure_analysis` | object or null | `null` on `success`. On any other status, a populated [Failure Analysis Object](#7-failure-analysis-object). |
 | `timestamp` | string | ISO 8601 UTC timestamp of when the benchmark completed. |
 
 **Status definitions:**
-- `success` — benchmark ran and produced a valid score
-- `failed` — benchmark ran but score regressed or did not meet threshold
+- `success` — benchmark ran and produced a valid score that improved or held even vs baseline
+- `regression` — benchmark ran but score dropped below baseline
 - `error` — benchmark could not be run due to a code or environment error
 - `timeout` — benchmark run exceeded the allowed time limit
 
@@ -156,7 +182,7 @@ After each iteration the orchestrator writes one history record capturing what w
 |---|---|---|
 | `iteration` | integer | The iteration number this record describes. |
 | `baseline_score` | number | Benchmark score at the start of this iteration, before any changes were applied. |
-| `winner` | object | The plan that produced the best score this iteration. See winner object fields below. |
+| `winner` | object or null | The plan that produced the best score this iteration, or `null` if no winner. See winner object fields below. |
 | `losers` | array of objects | All plans that did not win this iteration, including regressions and errors. See loser object fields below. |
 | `research_brief_id` | string | Identifier linking this record to the research brief that informed the round. Format: `round_{N}`. |
 
@@ -177,7 +203,7 @@ After each iteration the orchestrator writes one history record capturing what w
 | `score` | number | Benchmark score achieved (may be lower than baseline). |
 | `approach_family` | string | Approach family tag from the losing plan. |
 | `hypothesis` | string | The hypothesis that was refuted or failed to confirm. |
-| `failure_analysis` | string | Brief human-readable explanation of why this plan lost. |
+| `failure_analysis` | object | A [Failure Analysis Object](#7-failure-analysis-object) with structured breakdown of why this plan lost. |
 | `lesson` | string | Distilled lesson for future planners and the researcher to avoid repeating this mistake. |
 
 ### Example
@@ -198,7 +224,12 @@ After each iteration the orchestrator writes one history record capturing what w
       "score": 78.5,
       "approach_family": "architecture",
       "hypothesis": "Add dropout for regularization",
-      "failure_analysis": "Dropout hurt on small dataset — regularization counterproductive",
+      "failure_analysis": {
+        "what": "Score dropped from 80.0 to 78.5",
+        "why": "Dropout caused underfitting on small dataset — regularization counterproductive",
+        "category": "regression",
+        "lesson": "Don't add regularization when training data is limited"
+      },
       "lesson": "Don't add regularization when data is limited"
     }
   ],
@@ -213,41 +244,30 @@ After each iteration the orchestrator writes one history record capturing what w
 **Producer:** orchestrator
 **Consumer:** `plot_progress.py`
 
-The visualization data file is a top-level JSON array. The orchestrator appends one entry per iteration. `plot_progress.py` reads the entire array to render the progress chart.
+The visualization data file is a top-level JSON array of flat entries. The orchestrator appends entries after each iteration. `plot_progress.py` reads the entire array to render the progress chart.
 
 ### Structure
 
-The file contains a JSON array. Each element represents one iteration and has the following fields:
+The file contains a JSON array. Each element represents one candidate from one iteration:
 
 | Field | Type | Description |
 |---|---|---|
 | `iteration` | integer | The iteration number. |
-| `candidates` | array of objects | All plans evaluated this iteration, winner and losers alike. |
-
-**Candidate object fields:**
-
-| Field | Type | Description |
-|---|---|---|
 | `plan_id` | string | The plan's identifier. |
-| `score` | number | Benchmark score achieved. |
+| `benchmark_score` | number | Benchmark score achieved. |
+| `is_winner` | boolean | `true` if this candidate won the tournament. |
 | `approach_family` | string | Approach family tag. |
-| `status` | string | Either `"winner"` or `"loser"`. |
 
 ### Example
 
 ```json
 [
-  {
-    "iteration": 1,
-    "candidates": [
-      { "plan_id": "round_1_planner_a", "score": 85.2, "approach_family": "training_config", "status": "winner" },
-      { "plan_id": "round_1_planner_b", "score": 78.5, "approach_family": "architecture", "status": "loser" }
-    ]
-  }
+  { "iteration": 1, "plan_id": "round_1_planner_a", "benchmark_score": 85.2, "is_winner": true, "approach_family": "training_config" },
+  { "iteration": 1, "plan_id": "round_1_planner_b", "benchmark_score": 78.5, "is_winner": false, "approach_family": "architecture" }
 ]
 ```
 
-> **Append, do not overwrite.** Each iteration the orchestrator reads the existing array, appends the new element, and writes the full array back. Never replace the entire file.
+> **Append, do not overwrite.** Each iteration the orchestrator reads the existing array, appends new entries (one per candidate), and writes the full array back. Never replace the entire file.
 
 ---
 
@@ -310,5 +330,80 @@ When a plan execution produces a non-`success` status, the executor must populat
   "why": "Dropout layer caused underfitting on small dataset",
   "category": "regression",
   "lesson": "Regularization is counterproductive when training data is limited"
+}
+```
+
+---
+
+## 8. Iteration State
+
+**Producer:** orchestrator
+**Consumer:** orchestrator (on resume)
+
+Tracks the progress of a single iteration for robust resumability. The orchestrator updates this file at each step transition so that if the session terminates, it can resume from the exact point of interruption.
+
+**File location:** `docs/agent_defined/iteration_state.json`
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `iteration` | integer | The iteration number currently in progress. |
+| `status` | string | One of: `in_progress`, `completed`, `failed`, `interrupted`. |
+| `current_step` | string | One of: `research`, `planning`, `critic_review`, `execution`, `tournament`, `recording`, `visualization`, `cleanup`, `stop_check`. |
+| `started_at` | string | ISO 8601 timestamp of when this iteration began. |
+| `updated_at` | string | ISO 8601 timestamp of last state update. |
+| `research` | object | Status of the research step. Fields: `status` (pending/in_progress/completed/failed/skipped), `output_path` (string or null), `completed_at` (string or null). |
+| `planning` | object | Status of the planning step. Fields: `status`, `plans` (object mapping planner_id to `{status, output_path, critic_approved}`), `approved_count` (integer), `completed_at` (string or null). |
+| `execution` | object | Status of the execution step. Fields: `status`, `executors` (object mapping executor_id to `{status, plan_id, output_path, benchmark_score}`), `completed_at` (string or null). |
+| `tournament` | object | Status of the tournament step. Fields: `status`, `winner` (string or null — executor_id), `winner_score` (number or null), `completed_at` (string or null). |
+| `recording` | object | Status of the recording step. Fields: `status`, `history_path` (string or null), `visualization_updated` (boolean), `cleanup_done` (boolean). |
+| `user_ideas_consumed` | array of strings | List of user idea titles consumed in this iteration. |
+
+### Example
+
+```json
+{
+  "iteration": 1,
+  "status": "in_progress",
+  "current_step": "execution",
+  "started_at": "2026-03-28T10:00:00Z",
+  "updated_at": "2026-03-28T10:15:00Z",
+  "research": {
+    "status": "completed",
+    "output_path": "docs/agent_defined/research_briefs/round_1.json",
+    "completed_at": "2026-03-28T10:05:00Z"
+  },
+  "planning": {
+    "status": "completed",
+    "plans": {
+      "planner_a": { "status": "completed", "output_path": "docs/plans/round_1/plan_planner_a.json", "critic_approved": true },
+      "planner_b": { "status": "completed", "output_path": "docs/plans/round_1/plan_planner_b.json", "critic_approved": true },
+      "planner_c": { "status": "completed", "output_path": "docs/plans/round_1/plan_planner_c.json", "critic_approved": false }
+    },
+    "approved_count": 2,
+    "completed_at": "2026-03-28T10:10:00Z"
+  },
+  "execution": {
+    "status": "in_progress",
+    "executors": {
+      "executor_1": { "status": "running", "plan_id": "round_1_planner_a", "output_path": null, "benchmark_score": null },
+      "executor_2": { "status": "pending", "plan_id": "round_1_planner_b", "output_path": null, "benchmark_score": null }
+    },
+    "completed_at": null
+  },
+  "tournament": {
+    "status": "pending",
+    "winner": null,
+    "winner_score": null,
+    "completed_at": null
+  },
+  "recording": {
+    "status": "pending",
+    "history_path": null,
+    "visualization_updated": false,
+    "cleanup_done": false
+  },
+  "user_ideas_consumed": []
 }
 ```

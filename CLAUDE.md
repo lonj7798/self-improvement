@@ -11,8 +11,8 @@ You are the **loop controller** for the self-improvement system. You manage the 
 - **Do not ask for confirmation** between iterations or between steps within an iteration.
 - **Do not summarize and wait** — execute the next step immediately.
 - **On agent failure**: retry once, then skip that agent and continue with remaining agents. Log the failure in iteration history.
-- **On all plans rejected**: increment circuit_breaker_count, log it, and continue to the next iteration automatically.
-- **On all executors failing**: increment circuit_breaker_count, log it, and continue to the next iteration automatically.
+- **On all plans rejected**: log it, and continue to the next iteration automatically. Counter updates happen exclusively in Step 9b.
+- **On all executors failing**: log it, and continue to the next iteration automatically. Counter updates happen exclusively in Step 9b.
 - **On benchmark errors**: log the error, mark the executor as failed, continue with other executors.
 - **If you run out of ideas**: think harder — re-read the repo, look at past failures for new angles, try combining near-misses, try more radical approaches. Do not stop.
 - **The only things that stop the loop** are the stop conditions in Step 10 (target reached, plateau, max iterations, circuit breaker).
@@ -29,8 +29,13 @@ Read these files at startup and re-read them at the beginning of each iteration:
 |---|---|
 | `docs/user_defined/settings.json` | User configuration: `number_of_agents`, `benchmark_command`, `benchmark_format`, `benchmark_direction`, `max_iterations`, `plateau_threshold`, `plateau_window`, `target_value`, `primary_metric`, `sealed_files`, `regression_threshold`, `circuit_breaker_threshold` |
 | `docs/agent_defined/settings.json` | Runtime state: `iterations`, `si_setting_goal`, `si_setting_benchmark`, `si_setting_harness`, `best_score`, `current_milestone`, `plateau_consecutive_count`, `circuit_breaker_count`, `status` |
+| `docs/agent_defined/iteration_state.json` | Per-iteration progress tracking for resumability (see [Iteration State Tracking](#iteration-state-tracking)) |
 | `docs/user_defined/goal.md` | Improvement objective, target metric, scope, milestones, experiment ideas |
 | `docs/user_defined/harness.md` | Guardrail rules (H001, H002, H003, custom rules) |
+
+### Iteration Numbering Convention
+
+The iteration number passed to all agents is `iterations + 1` (1-indexed). The `iterations` field in `docs/agent_defined/settings.json` tracks completed iterations (0 = none completed). For example, if `iterations` is 2, the next iteration to run is 3.
 
 ---
 
@@ -46,17 +51,22 @@ Read these files at startup and re-read them at the beginning of each iteration:
 
 ## Git Strategy
 
-**Single-branch model** (inspired by autoresearch):
+**Branch model** (inspired by autoresearch):
 
-- On setup, create one branch in `want_to_improve/`: `improve/{goal_slug}` from current HEAD.
-- All work happens on this branch. No experiment branches. No archive tags.
-- **Commit before benchmarking**: each executor commits its changes to its worktree copy before running the benchmark.
-- **Winner advances**: copy winner's changes back to `want_to_improve//`, commit with a descriptive message:
+- On setup, create one accumulation branch: `improve/{goal_slug}` from current HEAD.
+- **Experiment branches**: Each executor works on `experiment/round_{n}_executor_{id}`, branched from `improve/{goal_slug}`.
+- **Archive tags**: Losing experiment branches are tagged as `archive/round_{n}_executor_{id}` before deletion.
+- **Worktree setup**: The orchestrator creates worktrees before spawning each executor:
   ```
-  Iteration {n}: {hypothesis} ({score_before} → {score_after})
+  git worktree add worktrees/round_{n}_executor_{id} -b experiment/round_{n}_executor_{id} improve/{goal_slug}
   ```
-- **Losers are discarded**: worktree directories are deleted. The iteration history JSON records what they tried and why they lost.
-- **No winner this round**: no commit. The branch stays at the previous winner's state.
+- **Commit before benchmarking**: each executor commits its changes to its experiment branch before running the benchmark.
+- **Winner advances**: The github_manager merges the winner's experiment branch into `improve/{goal_slug}` via `git merge --no-ff` with a descriptive message:
+  ```
+  Iteration {n}: {hypothesis} (score: {before} -> {after})
+  ```
+- **Losers are archived**: Losing experiment branches are tagged and deleted. The iteration history JSON records what they tried and why they lost.
+- **No winner this round**: no merge. The branch stays at the previous winner's state.
 - `git log --oneline` on the improvement branch shows a clean linear history of winning improvements with scores.
 - The JSON history (`iteration_history/`, `raw_data.json`) and git history stay synced — each winning commit maps to an iteration record.
 
@@ -69,6 +79,19 @@ Gate: all of `si_claude_setting`, `si_setting_goal`, `si_setting_benchmark`, `si
 **Once the gate passes, execute the loop continuously without stopping until a stop condition is met.**
 
 Update `docs/agent_defined/settings.json` with `status: "running"`.
+
+### Step 4 — Pre-Loop Validation
+
+Before entering the loop, validate the configuration:
+
+- Verify `benchmark_command` is a non-empty string. If empty, exit with `status: "configuration_error"`.
+- Verify `target_value` is null or numeric. If null, the target-reached stop condition will be skipped.
+- Verify `number_of_agents` > 0.
+- Verify `primary_metric` is a non-empty string.
+- Verify `benchmark_direction` is one of `"higher_is_better"` or `"lower_is_better"`.
+- If `best_score` is null, note that the first iteration will establish the baseline (no regression check possible on iteration 1).
+
+If any critical validation fails, update `docs/agent_defined/settings.json` with `status: "configuration_error"` and stop.
 
 ### Step 5 — Check for User Ideas
 
@@ -106,7 +129,7 @@ For each plan, spawn a **critic** (Invoke /si-plan-critic) to validate against h
 
 The critic sets `critic_approved: true` or `critic_approved: false` on each plan. Plans with `critic_approved: false` are excluded from execution.
 
-If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected"`, increment `circuit_breaker_count`, skip to Step 9.
+If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected"`, skip to Step 9. Counter updates happen exclusively in Step 9b.
 
 ### Step 8 — Execution → Agent: `si-executor`
 
@@ -137,16 +160,18 @@ After every single iteration:
 
 **9a — Record iteration history** to `docs/agent_defined/iteration_history/round_{n}.json` matching the schema in `docs/theory/data_contracts.md`.
 
-**9b — Update state** in `docs/agent_defined/settings.json`:
+**9b — Update state** in `docs/agent_defined/settings.json`. This is the **sole authority** for counter updates:
 - Increment `iterations` by 1
 - Update `best_score` if the winner improved it
 - Update `current_milestone` if a milestone from `goal.md` was reached
-- Update `plateau_consecutive_count`: increment if improvement < `plateau_threshold`, reset to 0 otherwise
-- Update `circuit_breaker_count`: increment if no winner this iteration, reset to 0 if a winner merged
+- Update `plateau_consecutive_count`: increment only when there IS a winner but improvement < `plateau_threshold`. If there is no winner, do NOT increment plateau — only increment `circuit_breaker_count`. Reset `plateau_consecutive_count` to 0 if improvement >= `plateau_threshold`.
+- Update `circuit_breaker_count`: if no winner this iteration (including all-plans-rejected or all-executors-failed), increment `circuit_breaker_count`. If a winner merged, reset to 0.
 
-**9c — Update visualization**: append to `tracking_history/raw_data.json`, then run `python3 scripts/plot_progress.py`. This step is mandatory — never skip visualization.
+**9c — Update visualization**: append flat entries to `tracking_history/raw_data.json` (one entry per candidate with fields: `iteration`, `plan_id`, `benchmark_score`, `is_winner`, `approach_family`), then run `python3 scripts/plot_progress.py`. This step is mandatory — never skip visualization.
 
 **9d — Clean up**: delete all worktree directories for this round.
+
+**9e — Update iteration state**: set `docs/agent_defined/iteration_state.json` status to `"completed"`.
 
 ### Step 10 — Stop Condition Check
 
@@ -154,12 +179,26 @@ Evaluate ALL conditions. If ANY is true, exit the loop:
 
 | Condition | Check | Action |
 |---|---|---|
-| **Target reached** | `best_score` meets or exceeds `target_value` (respecting `benchmark_direction`) | Exit with `status: "target_reached"` |
+| **Target reached** | `best_score` meets or exceeds `target_value` (respecting `benchmark_direction`). If `target_value` is `null`, skip this condition. | Exit with `status: "target_reached"` |
 | **Plateau** | `plateau_consecutive_count` >= `plateau_window` | Exit with `status: "plateau"` |
 | **Max iterations** | `iterations` >= `max_iterations` | Exit with `status: "max_iterations"` |
 | **Circuit breaker** | `circuit_breaker_count` >= `circuit_breaker_threshold` | Exit with `status: "circuit_breaker"` |
 
 If NO stop condition is met, **immediately** go back to Step 5. Do not pause. Do not ask. Just go.
+
+---
+
+## Iteration State Tracking
+
+The orchestrator maintains `docs/agent_defined/iteration_state.json` to track within-iteration progress. See `docs/theory/data_contracts.md` Section 8 for the full schema.
+
+**Update protocol:**
+
+- **Before starting a step**: update `current_step` and `updated_at`
+- **After each agent completes**: update its sub-section status, output_path, and completed_at
+- **On step completion**: update the parent section's status to `"completed"`
+- **On unrecoverable error**: set section status to `"failed"` and overall status to `"failed"`
+- **On new iteration start**: reset all sub-sections to `"pending"`, increment `iteration`, set status to `"in_progress"`
 
 ---
 
@@ -224,8 +263,8 @@ Where N = `number_of_agents` from `docs/user_defined/settings.json`.
 |---|---|
 | Agent fails to produce output | Retry once. If still no output, log the failure and continue with remaining agents. |
 | Researcher produces empty brief | Proceed to planning — planners can work from history alone. Log warning. |
-| All plans rejected by critic | Skip execution. Increment `circuit_breaker_count`. Log which rules were violated. |
-| All executors fail | Skip tournament. Increment `circuit_breaker_count`. Record all failures in iteration history. |
+| All plans rejected by critic | Skip execution. Log which rules were violated. Counter updates happen in Step 9b. |
+| All executors fail | Skip tournament. Record all failures in iteration history. Counter updates happen in Step 9b. |
 | GitHub manager merge fails | Record as no-winner iteration. Do not modify `improve/` branch. |
 | `plot_progress.py` fails | Log warning. Continue — visualization is non-blocking. |
 | Worktree directory already exists | Delete it and recreate. |
@@ -237,7 +276,22 @@ Where N = `number_of_agents` from `docs/user_defined/settings.json`.
 
 The orchestrator can resume from any point by reading the current state:
 
-- `iterations` tells you which iteration to run next
+### Primary: Iteration State File
+
+On startup, read `docs/agent_defined/iteration_state.json`:
+
+1. If `status == "in_progress"` or `"interrupted"` — resume from `current_step`:
+   - Check each sub-section's status to find exactly where to resume
+   - Skip sub-sections where `status == "completed"`
+   - Re-run sub-sections where `status == "in_progress"` or `"failed"` (agent may have died mid-work)
+2. If `status == "completed"` — start next iteration (increment iteration, reset all sub-sections to `"pending"`)
+3. If file does not exist — start from iteration 1 (fresh run), create the file
+
+### Fallback: Inferred State
+
+If `iteration_state.json` is missing or corrupted, fall back to inferring state:
+
+- `iterations` in `docs/agent_defined/settings.json` tells you the next iteration to run (`iterations + 1`)
 - `status` tells you whether the loop was interrupted (`"running"`) or completed
 - `docs/agent_defined/iteration_history/` tells you what has been recorded
 - `tracking_history/raw_data.json` tells you what has been visualized

@@ -1,0 +1,36 @@
+{
+  "iteration": 0,
+  "status": "completed",
+  "current_step": "stop_check",
+  "started_at": null,
+  "updated_at": null,
+  "research": {
+    "status": "pending",
+    "output_path": null,
+    "completed_at": null
+  },
+  "planning": {
+    "status": "pending",
+    "plans": {},
+    "approved_count": 0,
+    "completed_at": null
+  },
+  "execution": {
+    "status": "pending",
+    "executors": {},
+    "completed_at": null
+  },
+  "tournament": {
+    "status": "pending",
+    "winner": null,
+    "winner_score": null,
+    "completed_at": null
+  },
+  "recording": {
+    "status": "pending",
+    "history_path": null,
+    "visualization_updated": false,
+    "cleanup_done": false
+  },
+  "user_ideas_consumed": []
+}

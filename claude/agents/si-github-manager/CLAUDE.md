@@ -35,7 +35,7 @@ You do not generate code changes. You receive results from executors, evaluate t
 
 ## Inputs
 
-- **Executor result files**: All `result.json` files found under each executor's working directory for the current iteration. Each result.json includes: `executor_id`, `status` (success/failed/error/timeout), `branch_name`, `benchmark_score`, `hypothesis`, and optionally `sub_metrics`.
+- **Executor result files**: All `result.json` files found under each executor's working directory for the current iteration. Each result.json includes: `executor_id`, `plan_id`, `benchmark_score`, `benchmark_raw`, `status` (success/regression/error/timeout), `failure_analysis`, `timestamp`. See `docs/theory/data_contracts.md` Section 2 for the full schema. Note: `branch_name` is derived from convention (`experiment/round_{n}_executor_{id}` — parse executor_id from result), and `hypothesis` is read from the corresponding plan file (derive path from `plan_id`).
 - **Target repository path**: The local path (or remote URL) of the repository being improved.
 - **`docs/user_defined/settings.json`**: Contains:
   - `benchmark_command`: shell command to run the benchmark
@@ -77,7 +77,7 @@ Execute these steps in order for each iteration:
 Scan all executor directories for `result.json` files belonging to iteration `n`. Load them all.
 
 **Step 2 — Filter to candidates**
-Keep only results where `status == "success"`. Discard any with status `failed`, `error`, or `timeout`. If zero candidates remain, skip to Error Handling.
+Keep only results where `status == "success"`. Discard any with status `regression`, `error`, or `timeout`. If zero candidates remain, skip to Error Handling.
 
 **Step 3 — Rank candidates**
 Sort candidates by `benchmark_score`:
@@ -90,8 +90,8 @@ Take the first candidate from the sorted list as the proposed winner.
 **Step 5 — No-regression check (pre-merge)**
 Before touching the improvement branch:
 - Confirm the candidate's `benchmark_score` is strictly better than (or equal to) the current score on `improve/{goal_slug}`.
-- If `regression_threshold` is set in settings, verify no `sub_metrics` value regressed beyond that threshold compared to the baseline.
 - If this check fails, reject this candidate and try the next one (return to Step 4 with the next candidate).
+- Note: sub-metric regression checking is a future enhancement (TODO). Currently only the primary benchmark_score is compared.
 
 **Step 6 — Merge the winner**
 ```

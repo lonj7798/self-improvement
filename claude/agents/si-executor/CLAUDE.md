@@ -59,9 +59,9 @@ Read the plan JSON file. Confirm the following before proceeding:
 
 Understand what the plan is trying to do. Read the `hypothesis` and `expected_outcome` carefully so you implement with intent, not blindly.
 
-### Step 2 — Set Up the Worktree
+### Step 2 — Verify the Worktree
 
-Clone or checkout the target repository into your assigned worktree directory. The loop controller will have told you the source repo location. Your worktree must be completely isolated — no shared state with other executors.
+Your worktree directory has been created by the orchestrator via `git worktree add`. Verify it exists and contains the repo. Do not create it yourself. Your worktree must be completely isolated — no shared state with other executors.
 
 Before making any changes, record the current baseline benchmark score by running the benchmark command once. Store this as `baseline_score` for your own reference (it is not part of the result schema, but you need it to detect regression).
 
@@ -166,7 +166,7 @@ Required fields:
 | `plan_id` | string | Copied verbatim from the plan document |
 | `benchmark_score` | number | Parsed primary metric. Use `0.0` if benchmark could not run. |
 | `benchmark_raw` | string | Full verbatim stdout from the benchmark run. Empty string if benchmark never ran. |
-| `status` | string | One of: `"success"`, `"regression"`, `"error"`, `"timeout"` |
+| `status` | string | One of: `"success"`, `"regression"`, `"error"`, `"timeout"`. See `docs/theory/data_contracts.md` Section 2 for definitions. |
 | `failure_analysis` | object or null | `null` on `success`. Populated on all other statuses — see below. |
 | `timestamp` | string | ISO 8601 UTC timestamp of benchmark completion |
 

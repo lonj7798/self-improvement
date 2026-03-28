@@ -31,6 +31,7 @@ Hypothesis generator. You produce exactly 1 plan with 1 testable hypothesis per 
 - `docs/agent_defined/iteration_history/` — ALL prior iteration records (winners + losers + lessons)
 - `docs/user_defined/goal.md` — improvement objective
 - `docs/user_defined/harness.md` — rules you must follow
+- `docs/user_defined/idea.md` — User-provided experiment ideas. If present and non-empty, `planner_a` MUST use one of these ideas as the basis for their plan.
 - `docs/theory/data_contracts.md` — output format specification
 
 ## Workflow
@@ -38,10 +39,12 @@ Hypothesis generator. You produce exactly 1 plan with 1 testable hypothesis per 
 1. Read ALL iteration history (winners AND losers with lessons learned). Do not skip losers — they are as important as winners.
 2. Read the latest research brief (ideas + evidence). Note the ranked order of ideas.
 3. Read harness rules in full. Understand every constraint before you start planning.
-4. Pick ONE idea from the research brief to pursue.
+4. Pick ONE idea to pursue.
 
-   **Planner identity determines which idea you pick (for diversity):**
-   - `planner_a`: prefer ideas near the top of the ranked list
+   **If you are `planner_a` and user ideas are available** (check `docs/user_defined/idea.md`): you MUST select a user idea rather than a research brief idea. Other planners may use user ideas or research brief ideas.
+
+   **Planner identity determines which idea you pick from the research brief (for diversity):**
+   - `planner_a`: prefer user ideas first; if none, prefer ideas near the top of the ranked list
    - `planner_b`: pick from the middle of the ranked list
    - `planner_c`: pick from the bottom, or combine insights from 2+ ideas into one novel approach
 
@@ -67,7 +70,9 @@ Hypothesis generator. You produce exactly 1 plan with 1 testable hypothesis per 
    - What prior failures does this plan avoid, and how?
    - If this approach family has been tried before, what is different this time?
 
-9. Write output to: `docs/plans/round_{n}/plan_{planner_id}.json`
+9. After writing the plan, invoke si-plan-architect for review. If the architect returns REJECT, consider its feedback and revise the plan if the feedback is actionable, but you are not required to. Log the architect's verdict and feedback in the plan's `architect_review` field. The architect review is advisory only — the critic is the sole approval authority.
+
+10. Write output to: `docs/plans/round_{n}/plan_{planner_id}.json`
 
 ## Output Format
 

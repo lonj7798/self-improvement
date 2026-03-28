@@ -4,14 +4,37 @@
 #   ./scripts/validate.sh              # sealed file check only
 #   ./scripts/validate.sh plan.json    # + plan schema validation
 #   ./scripts/validate.sh plan.json result.json  # + result schema validation
+#   ./scripts/validate.sh --worktree /path plan.json result.json  # worktree mode
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SETTINGS="${PROJECT_ROOT}/docs/user_defined/settings.json"
+SEALED_HASHES_FILE="${PROJECT_ROOT}/.sealed_hashes"
+HARNESS_FILE="${PROJECT_ROOT}/docs/user_defined/harness.md"
 
 VALID_APPROACH_FAMILIES="architecture training_config data infrastructure optimization testing documentation other"
+
+# Parse --worktree flag
+WORKTREE_PATH=""
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --worktree)
+            WORKTREE_PATH="$2"
+            shift 2
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${POSITIONAL_ARGS[@]+"${POSITIONAL_ARGS[@]}"}"
+
+# Determine git working directory (worktree or project root)
+GIT_DIR="${WORKTREE_PATH:-${PROJECT_ROOT}}"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +45,31 @@ require_jq() {
     if ! command -v jq &>/dev/null; then
         err "jq is not installed. Install it with: brew install jq  (macOS) or apt-get install jq (Linux)"
         exit 1
+    fi
+}
+
+load_custom_families() {
+    # Parse custom approach families from harness.md if present
+    if [[ -f "${HARNESS_FILE}" ]]; then
+        local in_section=0
+        while IFS= read -r line; do
+            if [[ "${line}" == "## Custom Approach Families"* ]]; then
+                in_section=1
+                continue
+            fi
+            if [[ ${in_section} -eq 1 ]]; then
+                # Stop at next section
+                if [[ "${line}" == "## "* ]]; then
+                    break
+                fi
+                # Extract family names (lines starting with - or *)
+                local family
+                family=$(echo "${line}" | sed -n 's/^[[:space:]]*[-*][[:space:]]*`\?\([a-z_]*\)`\?.*/\1/p')
+                if [[ -n "${family}" ]]; then
+                    VALID_APPROACH_FAMILIES="${VALID_APPROACH_FAMILIES} ${family}"
+                fi
+            fi
+        done < "${HARNESS_FILE}"
     fi
 }
 
@@ -44,39 +92,121 @@ check_sealed_files() {
     fi
 
     # Not a git repo — skip
-    if ! git -C "${PROJECT_ROOT}" rev-parse --git-dir &>/dev/null 2>&1; then
+    if ! git -C "${GIT_DIR}" rev-parse --git-dir &>/dev/null 2>&1; then
         ok "Not a git repository — skipping sealed file check."
         return 0
     fi
 
-    # Collect modified files into a newline-separated string
-    modified_files_str=$(git -C "${PROJECT_ROOT}" diff --name-only HEAD 2>/dev/null || true)
+    # Collect modified files: use diff against the improvement branch HEAD
+    # In worktree mode, compare against the base commit; otherwise compare working tree
+    if [[ -n "${WORKTREE_PATH}" ]]; then
+        # Compare worktree state against its branch point
+        local base_commit
+        base_commit=$(git -C "${GIT_DIR}" merge-base HEAD HEAD 2>/dev/null || echo "HEAD")
+        modified_files_str=$(git -C "${GIT_DIR}" diff --name-only "${base_commit}" 2>/dev/null || true)
+        # Also include uncommitted changes
+        local uncommitted
+        uncommitted=$(git -C "${GIT_DIR}" diff --name-only 2>/dev/null || true)
+        if [[ -n "${uncommitted}" ]]; then
+            modified_files_str="${modified_files_str}"$'\n'"${uncommitted}"
+        fi
+    else
+        # Default: check both staged and unstaged changes
+        modified_files_str=$(git -C "${GIT_DIR}" diff --name-only HEAD 2>/dev/null || true)
+        local staged
+        staged=$(git -C "${GIT_DIR}" diff --name-only --cached 2>/dev/null || true)
+        if [[ -n "${staged}" ]]; then
+            modified_files_str="${modified_files_str}"$'\n'"${staged}"
+        fi
+    fi
+
+    # Deduplicate
+    if [[ -n "${modified_files_str}" ]]; then
+        modified_files_str=$(echo "${modified_files_str}" | sort -u)
+    fi
 
     if [[ -z "${modified_files_str}" ]]; then
         ok "No modified files detected."
+    else
+        # Check each sealed file against each modified file
+        violations=""
+        while IFS= read -r sealed; do
+            [[ -z "${sealed}" ]] && continue
+            while IFS= read -r modified; do
+                [[ -z "${modified}" ]] && continue
+                if [[ "${sealed}" == */ ]]; then
+                    # Directory pattern: match any file within this directory
+                    [[ "${modified}" == "${sealed}"* ]] && violations="${violations} ${modified}"
+                else
+                    # Exact file match
+                    [[ "${modified}" == "${sealed}" ]] && violations="${violations} ${modified}"
+                fi
+            done <<< "${modified_files_str}"
+        done < <(jq -r '.sealed_files[]' "${SETTINGS}" 2>/dev/null)
+
+        if [[ -n "${violations}" ]]; then
+            err "Sealed file(s) were modified:${violations}"
+            err "These files are protected and must not be changed."
+            exit 1
+        fi
+
+        modified_count=$(echo "${modified_files_str}" | wc -l | tr -d ' ')
+        ok "Sealed file check passed (${modified_count} modified, none sealed)."
+    fi
+
+    # Hash-lock verification (defense in depth)
+    check_sealed_hashes
+}
+
+check_sealed_hashes() {
+    if [[ ! -f "${SEALED_HASHES_FILE}" ]]; then
+        echo "Warning: .sealed_hashes manifest not found — skipping hash verification."
+        echo "  Run initial_setup.py step 4 to generate the manifest."
         return 0
     fi
 
-    # Check each sealed file against each modified file
-    violations=""
-    while IFS= read -r sealed; do
-        [[ -z "${sealed}" ]] && continue
-        while IFS= read -r modified; do
-            [[ -z "${modified}" ]] && continue
-            if [[ "${modified}" == "${sealed}" ]]; then
-                violations="${violations} ${modified}"
-            fi
-        done <<< "${modified_files_str}"
-    done < <(jq -r '.sealed_files[]' "${SETTINGS}" 2>/dev/null)
+    if ! command -v shasum &>/dev/null && ! command -v sha256sum &>/dev/null; then
+        echo "Warning: neither shasum nor sha256sum found — skipping hash verification."
+        return 0
+    fi
 
-    if [[ -n "${violations}" ]]; then
-        err "Sealed file(s) were modified:${violations}"
-        err "These files are protected and must not be changed."
+    local want_to_improve="${GIT_DIR}"
+    if [[ -z "${WORKTREE_PATH}" ]]; then
+        want_to_improve="${PROJECT_ROOT}/want_to_improve"
+    fi
+
+    local hash_violations=""
+    while IFS= read -r file_path; do
+        [[ -z "${file_path}" ]] && continue
+        local expected_hash
+        expected_hash=$(jq -r --arg f "${file_path}" '.[$f]' "${SEALED_HASHES_FILE}" 2>/dev/null)
+        [[ "${expected_hash}" == "null" || -z "${expected_hash}" ]] && continue
+
+        local full_path="${want_to_improve}/${file_path}"
+        if [[ ! -f "${full_path}" ]]; then
+            hash_violations="${hash_violations} ${file_path}(missing)"
+            continue
+        fi
+
+        local actual_hash
+        if command -v sha256sum &>/dev/null; then
+            actual_hash=$(sha256sum "${full_path}" | awk '{print $1}')
+        else
+            actual_hash=$(shasum -a 256 "${full_path}" | awk '{print $1}')
+        fi
+
+        if [[ "${actual_hash}" != "${expected_hash}" ]]; then
+            hash_violations="${hash_violations} ${file_path}"
+        fi
+    done < <(jq -r 'keys[]' "${SEALED_HASHES_FILE}" 2>/dev/null)
+
+    if [[ -n "${hash_violations}" ]]; then
+        err "Sealed file hash mismatch detected:${hash_violations}"
+        err "These files have been modified since setup. This violates sealed evaluation."
         exit 1
     fi
 
-    modified_count=$(echo "${modified_files_str}" | wc -l | tr -d ' ')
-    ok "Sealed file check passed (${modified_count} modified, none sealed)."
+    ok "Sealed file hash verification passed."
 }
 
 # ── check b+d+e: plan schema validation ────────────────────────────────────────
@@ -106,6 +236,33 @@ check_plan_schema() {
     fi
 
     ok "Plan contains all required fields."
+
+    # check: critic_approved must be explicitly true or false (not truthy string)
+    critic_val=$(jq -r '.critic_approved' "${plan_file}" 2>/dev/null)
+    if [[ "${critic_val}" != "true" && "${critic_val}" != "false" ]]; then
+        err "critic_approved must be a boolean (true or false), got: '${critic_val}'"
+        exit 1
+    fi
+
+    ok "critic_approved is a valid boolean: ${critic_val}"
+
+    # check: target_files must be a non-empty array
+    target_files_len=$(jq '.target_files | length' "${plan_file}" 2>/dev/null || echo "0")
+    if [[ "${target_files_len}" -eq 0 ]]; then
+        err "target_files must be a non-empty array (got length 0)."
+        exit 1
+    fi
+
+    ok "target_files is non-empty (${target_files_len} file(s))."
+
+    # check: steps must be a non-empty array
+    steps_len=$(jq '.steps | length' "${plan_file}" 2>/dev/null || echo "0")
+    if [[ "${steps_len}" -eq 0 ]]; then
+        err "steps must be a non-empty array (got length 0)."
+        exit 1
+    fi
+
+    ok "steps is non-empty (${steps_len} step(s))."
 
     # check d: one-hypothesis check — hypothesis must be a non-empty string, not array
     hypothesis_type=$(jq -r '.hypothesis | type' "${plan_file}" 2>/dev/null)
@@ -151,13 +308,28 @@ check_result_schema() {
         exit 1
     fi
 
-    local required_fields="executor_id plan_id benchmark_score status timestamp"
+    local required_fields="executor_id plan_id benchmark_score status timestamp benchmark_raw"
     local missing=""
 
     for field in ${required_fields}; do
         val=$(jq -r --arg f "${field}" '.[$f]' "${result_file}" 2>/dev/null)
         if [[ "${val}" == "null" || -z "${val}" ]]; then
-            missing="${missing} ${field}"
+            # benchmark_raw can be empty string on error/timeout, benchmark_score can be 0
+            if [[ "${field}" == "benchmark_raw" ]]; then
+                # Check it exists (even if empty)
+                exists=$(jq --arg f "${field}" 'has($f)' "${result_file}" 2>/dev/null || echo "false")
+                if [[ "${exists}" != "true" ]]; then
+                    missing="${missing} ${field}"
+                fi
+            elif [[ "${field}" == "benchmark_score" ]]; then
+                # Allow 0 as a valid score
+                exists=$(jq --arg f "${field}" 'has($f)' "${result_file}" 2>/dev/null || echo "false")
+                if [[ "${exists}" != "true" ]]; then
+                    missing="${missing} ${field}"
+                fi
+            else
+                missing="${missing} ${field}"
+            fi
         fi
     done
 
@@ -167,6 +339,46 @@ check_result_schema() {
     fi
 
     ok "Result contains all required fields."
+
+    # Validate status enum
+    local status
+    status=$(jq -r '.status' "${result_file}" 2>/dev/null)
+    case "${status}" in
+        success|regression|error|timeout) ;;
+        *)
+            err "Invalid status '${status}'. Must be one of: success, regression, error, timeout"
+            exit 1
+            ;;
+    esac
+
+    ok "Status '${status}' is valid."
+
+    # Check failure_analysis on non-success status
+    if [[ "${status}" != "success" ]]; then
+        local fa_type
+        fa_type=$(jq -r '.failure_analysis | type' "${result_file}" 2>/dev/null)
+        if [[ "${fa_type}" != "object" ]]; then
+            err "failure_analysis must be a non-null object when status is '${status}' (got ${fa_type})"
+            exit 1
+        fi
+
+        # Verify failure_analysis has required fields
+        local fa_fields="what why category lesson"
+        local fa_missing=""
+        for field in ${fa_fields}; do
+            val=$(jq -r --arg f "${field}" '.failure_analysis[$f]' "${result_file}" 2>/dev/null)
+            if [[ "${val}" == "null" || -z "${val}" ]]; then
+                fa_missing="${fa_missing} ${field}"
+            fi
+        done
+
+        if [[ -n "${fa_missing}" ]]; then
+            err "failure_analysis is missing required fields:${fa_missing}"
+            exit 1
+        fi
+
+        ok "failure_analysis is complete for non-success status."
+    fi
 }
 
 # ── main ───────────────────────────────────────────────────────────────────────
@@ -174,18 +386,21 @@ check_result_schema() {
 main() {
     echo "=== validate.sh ==="
 
+    # Load custom approach families from harness
+    load_custom_families
+
     # Always run the sealed file check
     check_sealed_files
 
-    if [[ $# -ge 1 ]]; then
-        check_plan_schema "$1"
+    if [[ ${#POSITIONAL_ARGS[@]} -ge 1 ]]; then
+        check_plan_schema "${POSITIONAL_ARGS[0]}"
     fi
 
-    if [[ $# -ge 2 ]]; then
-        check_result_schema "$2"
+    if [[ ${#POSITIONAL_ARGS[@]} -ge 2 ]]; then
+        check_result_schema "${POSITIONAL_ARGS[1]}"
     fi
 
     echo "=== All checks passed ==="
 }
 
-main "$@"
+main

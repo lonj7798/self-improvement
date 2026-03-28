@@ -80,6 +80,12 @@ Fail if any required field is missing, null, or the wrong type.
 
 ---
 
+### Architect review (advisory only)
+
+If the `architect_review` field is present in the plan, note its verdict in your review but do not auto-reject based on it. The critic makes the final decision independently based on the checks above. The architect review provides additional context but is not a gating condition.
+
+---
+
 ### History awareness
 
 The plan must acknowledge iteration history.

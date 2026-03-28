@@ -101,31 +101,11 @@ Every experiment — win or lose — is a permanent record.
 
 ### Storage
 
-All experiment records live in `docs/agent_defined/iteration_history/`. Each iteration produces one file per candidate:
-
-```
-docs/agent_defined/iteration_history/
-  iter_001_candidate_A.md
-  iter_001_candidate_B.md   ← winner
-  iter_001_candidate_C.md
-  iter_002_candidate_A.md
-  ...
-```
+All experiment records live in `docs/agent_defined/iteration_history/`. See `data_contracts.md` Section 4 for the canonical iteration history record format. Each iteration produces one JSON file: `round_{n}.json`.
 
 ### Planner obligation
 
 Planners **must** read all prior iteration records before generating a new plan. This is enforced by the critic agent, which rejects plans that propose approaches already documented as failures without explaining why the new attempt will succeed differently.
-
-### Record structure
-
-Each record captures:
-- **Hypothesis**: the single idea being tested
-- **Approach family**: taxonomy tag (see section 7)
-- **Changes made**: summary of the diff
-- **Benchmark result**: score achieved vs. baseline
-- **Outcome**: win / loss / disqualified
-- **Failure analysis** (if applicable): structured root cause (see section 8)
-- **Lesson**: one-sentence takeaway for future planners
 
 ### Why losers matter
 
@@ -157,23 +137,7 @@ If the user specifies experiment ideas in `goal.md`, planners use those directly
 
 ### Research brief format
 
-```markdown
-# Research Brief — Iteration N
-
-## Repository Analysis
-- Key bottleneck identified: [finding]
-- Relevant code paths: [paths]
-
-## External Findings
-- Paper: [title] — suggests [approach]
-- Similar project: [name] — achieved [result] via [method]
-
-## Ranked Ideas
-1. [Idea] — evidence: [source] — estimated impact: [high/medium/low]
-2. [Idea] — ...
-```
-
-This brief feeds into all N planners, who each select one idea to develop into a hypothesis.
+See `data_contracts.md` Section 3 for the canonical research brief schema. The brief is a JSON file containing a repo analysis summary and a ranked list of improvement ideas with evidence and confidence levels.
 
 ---
 
@@ -198,19 +162,9 @@ Each hypothesis must be:
 
 ### Approach family taxonomy
 
-```
-approach_family:
-  algorithmic       # data structure or algorithm change
-  numerical         # precision, dtype, approximation
-  memory            # allocation, caching, layout
-  parallelism       # threading, vectorization, batching
-  architecture      # model or system structure change
-  configuration     # hyperparameter or compile-time setting
-  dependency        # library swap or version upgrade
-  pruning           # removing code paths or features
-```
+See `data_contracts.md` Section 6 for the canonical approach family taxonomy.
 
-The taxonomy enables trend analysis across iterations: if three `algorithmic` approaches have all failed, the researcher can focus future iterations on `memory` or `parallelism`.
+The taxonomy enables trend analysis across iterations: if three approaches from one family have all failed, the researcher can focus future iterations on different families.
 
 ### Why single-hypothesis matters
 
@@ -233,17 +187,7 @@ Every failed experiment produces a structured post-mortem, not just a score.
 | `scope_error` | Plan tried to modify sealed files or out-of-scope components |
 | `infrastructure` | Environment issue (flaky benchmark, dependency failure) |
 
-### Analysis structure
-
-```markdown
-## Failure Analysis
-
-- **Category**: regression
-- **What failed**: The new KD-tree implementation is slower than the linear scan for n < 1000 (the dominant case in the benchmark).
-- **Why it failed**: KD-tree construction cost amortizes only at large n. The benchmark dataset is small.
-- **What we learned**: Algorithmic improvements for this metric must account for the actual distribution of n, not worst-case complexity.
-- **Implications for future planners**: Skip tree-based approaches unless benchmark inputs are confirmed to be large-n. Investigate input size distribution first.
-```
+See `data_contracts.md` Section 7 for the full failure analysis object schema and all failure categories.
 
 ### Feedback loop
 
@@ -286,25 +230,10 @@ The loop halts when any of the following conditions are met:
 
 | Condition | Description |
 |---|---|
-| **Target reached** | Benchmark score meets or exceeds the value specified in `goal.md` |
-| **Plateau detected** | Improvement per iteration falls below `min_delta` threshold for `plateau_window` consecutive iterations |
+| **Target reached** | Benchmark score meets or exceeds `target_value` from `settings.json` |
+| **Plateau detected** | Improvement per iteration falls below `plateau_threshold` for `plateau_window` consecutive iterations |
 | **Max iterations** | Total iteration count reaches `max_iterations` from `settings.json` |
-| **Circuit breaker** | N consecutive iterations where all candidates fail (regression, OOM, timeout, or logic error) — indicates a systemic problem requiring human intervention |
-
-### Configuration
-
-```json
-// settings.json
-{
-  "stop_conditions": {
-    "target_score": 0.95,
-    "plateau_window": 5,
-    "min_delta": 0.001,
-    "max_iterations": 50,
-    "circuit_breaker_n": 3
-  }
-}
-```
+| **Circuit breaker** | `circuit_breaker_threshold` consecutive iterations where all candidates fail — indicates a systemic problem requiring human intervention |
 
 When the circuit breaker fires, the system writes a diagnostic report explaining the failure pattern and halts without merging anything. Human review is required before the loop can resume.
 

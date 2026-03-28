@@ -2,6 +2,7 @@
 """Interactive setup for the self-improvement loop.
 Run this before starting the orchestrator to configure all required settings."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -15,6 +16,7 @@ GOAL_FILE = ROOT / "docs" / "user_defined" / "goal.md"
 REPO_FILE = ROOT / "docs" / "user_defined" / "repo.md"
 HARNESS_FILE = ROOT / "docs" / "user_defined" / "harness.md"
 BASELINE_FILE = ROOT / "tracking_history" / "baseline.json"
+SEALED_HASHES_FILE = ROOT / ".sealed_hashes"
 
 # All sources live in claude/ — copied to .claude/ during setup
 REQUIRED_FILES = [
@@ -31,8 +33,15 @@ REQUIRED_FILES = [
 
 
 def load_json(path: Path) -> dict:
-    with open(path) as f:
-        return json.load(f)
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: file not found: {path}")
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        print(f"Error: could not parse {path}: {exc}")
+        sys.exit(1)
 
 
 def save_json(path: Path, data: dict) -> None:
@@ -54,6 +63,56 @@ def confirm(msg: str, default: bool = True) -> bool:
     if not val:
         return default
     return val in ("y", "yes")
+
+
+def compute_file_hash(filepath: Path) -> str:
+    """Compute SHA-256 hash of a file."""
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def generate_sealed_hashes(user_settings: dict) -> None:
+    """Generate .sealed_hashes manifest from sealed_files in settings."""
+    sealed_files = user_settings.get("sealed_files", [])
+    if not sealed_files:
+        print("  No sealed files configured — skipping hash manifest.")
+        return
+
+    want_to_improve = ROOT / "want_to_improve"
+    if not want_to_improve.exists():
+        print("  Warning: want_to_improve/ not found — cannot generate sealed hashes.")
+        return
+
+    hashes = {}
+    missing = []
+    for sealed_path in sealed_files:
+        full_path = want_to_improve / sealed_path
+        if sealed_path.endswith("/"):
+            # Directory pattern — hash all files within
+            dir_path = want_to_improve / sealed_path.rstrip("/")
+            if dir_path.is_dir():
+                for child in sorted(dir_path.rglob("*")):
+                    if child.is_file():
+                        rel = str(child.relative_to(want_to_improve))
+                        hashes[rel] = compute_file_hash(child)
+            else:
+                missing.append(sealed_path)
+        elif full_path.is_file():
+            hashes[sealed_path] = compute_file_hash(full_path)
+        else:
+            missing.append(sealed_path)
+
+    if missing:
+        print(f"  Warning: sealed files not found (will be checked when they exist): {missing}")
+
+    if hashes:
+        save_json(SEALED_HASHES_FILE, hashes)
+        print(f"  Generated .sealed_hashes manifest ({len(hashes)} file(s)).")
+    else:
+        print("  No sealed files found to hash.")
 
 
 def step0_claude_setup() -> bool:
@@ -258,7 +317,7 @@ def step3_benchmark(user_settings: dict, agent_settings: dict) -> bool:
         print(f"Running: {cmd}")
         try:
             result = subprocess.run(
-                cmd, shell=True, cwd=str(want_to_improve),
+                ["bash", "-c", cmd], cwd=str(want_to_improve),
                 capture_output=True, text=True, timeout=600,
             )
             print(f"stdout: {result.stdout.strip()}")
@@ -356,6 +415,11 @@ def step4_harness(agent_settings: dict) -> bool:
     agent_settings["si_setting_harness"] = True
     save_json(AGENT_SETTINGS, agent_settings)
     print("Harness configured.")
+
+    # Generate sealed file hashes after harness is configured
+    user_settings = load_json(USER_SETTINGS)
+    generate_sealed_hashes(user_settings)
+
     return True
 
 
@@ -377,7 +441,10 @@ def main():
         print("\n=== Step 0: Claude Setup === (already complete)")
 
     # Step 1
-    step1_repository(user_settings)
+    if not step1_repository(user_settings):
+        print("Warning: Repository setup incomplete. Steps 2-4 may not work correctly.")
+        if not confirm("Continue anyway?", default=False):
+            sys.exit(1)
     user_settings = load_json(USER_SETTINGS)  # reload after possible changes
 
     # Step 2
