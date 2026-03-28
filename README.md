@@ -9,23 +9,22 @@ You give it a repo and a goal. It spawns multiple AI agents that independently p
 ## Setup
 
 1. Clone a target repo into `want_to_improve/`
-2. Put your evaluation script in `benchmark_is_here/`
-3. Define your goal in `docs/user_defined/goal.md`
+2. Define your goal in `docs/user_defined/goal.md`
+3. Set `benchmark_command` in `docs/user_defined/settings.json`
 4. Configure guardrails in `docs/user_defined/harness.md`
-5. Run the orchestrator
+5. Run `python3 docs/user_defined/initial_setup.py` (or let the orchestrator walk you through it)
 
 ## Architecture
 
 ```
-CLAUDE.md (entry point)
-  └── orchestrator (loop controller)
-        ├── researcher         — analyzes codebase, finds improvement opportunities
-        ├── planner (×N)       — generates improvement hypotheses
-        │     ├── plan-creator     — structures plan documents
-        │     ├── plan-architect   — reviews architectural soundness
-        │     └── plan-critic      — enforces harness rules
-        ├── executor (×N)      — implements plans in isolated worktrees
-        └── github-manager     — picks winner, merges, records history
+CLAUDE.md (loop controller)
+  ├── researcher         — analyzes codebase, finds improvement opportunities
+  ├── planner (×N)       — generates improvement hypotheses
+  │     ├── plan-creator     — structures plan documents
+  │     ├── plan-architect   — reviews architectural soundness
+  │     └── plan-critic      — enforces harness rules
+  ├── executor (×N)      — implements plans in isolated worktrees
+  └── github-manager     — picks winner, merges, records history
 ```
 
 Each iteration:
@@ -40,24 +39,29 @@ Each iteration:
 ## Project Structure
 
 ```
-CLAUDE.md                   # Entry point
-agents/
-  orchestrator/             # Loop controller
-  researcher/               # Codebase analysis
-  planner/                  # Hypothesis generation
-    skills/                 # Plan sub-skills (creator, architect, critic)
-  executor/                 # Experiment runner
-  github_manager/           # Branch management and merge
+CLAUDE.md                        # Orchestrator entry point (loop controller)
+claude/
+  agents/
+    si-researcher/               # Codebase analysis + research briefs
+    si-planner/                  # Hypothesis generation
+      skills/
+        si-plan-creator/         # Structures plan documents
+        si-plan-architect/       # Reviews architectural soundness
+        si-plan-critic/          # Enforces harness rules
+    si-executor/                 # Experiment runner in isolated worktrees
+    si-github-manager/           # Tournament selection, merge, branch management
+  skills/
+    si-goal-clarifier/           # Interactive goal definition
+    si-benchmark-builder/        # Benchmark creation wizard
 docs/
-  user_defined/             # Your config: goal, harness, settings
-  agent_defined/            # Agent output: iteration history, research briefs
-  theory/                   # Design docs, data contracts
-  plans/                    # Per-round improvement plans
+  user_defined/                  # Your config: goal, harness, settings, setup
+  agent_defined/                 # Runtime state: iteration history, research briefs
+  theory/                        # Design docs, data contracts
 scripts/
-  validate.sh               # Sealed evaluation runner
-  plot_progress.py          # Progress visualization
-benchmark_is_here/          # Your evaluation code (read-only to agents)
-tracking_history/           # Raw benchmark data across iterations
+  validate.sh                    # Sealed file + schema validation
+  plot_progress.py               # Progress visualization
+want_to_improve/                 # Target repo (cloned during setup)
+tracking_history/                # Raw benchmark data + progress chart
 ```
 
 ## Key Concepts
@@ -67,6 +71,8 @@ tracking_history/           # Raw benchmark data across iterations
 - **Harness Rules** — one hypothesis per plan, no repeating the same approach family 3x, diversity within each round
 - **Sealed Evaluation** — benchmark code is read-only so agents cannot game the metric
 - **Plateau Detection** — auto-stops when no improvement is found after configured rounds
+- **Circuit Breaker** — halts after consecutive no-winner iterations for human review
+- **Resumability** — can resume from any point after interruption via iteration state tracking
 
 ## Inspired By
 
