@@ -51,6 +51,27 @@ Clone or link a GitHub repo to `want_to_improve/`.
 - Record the URL in `docs/user_defined/settings.json` as `current_repo_url`.
 - Optionally fill in `docs/user_defined/repo.md` with description, key files, and notes.
 
+### Step 1b — Fork Setup (recommended)
+
+Fork the target repo so all improvement work happens on the fork. The self-improvement repo stays branch-clean.
+
+**Prerequisites:** `gh` CLI installed and authenticated (`gh auth status`).
+
+1. Fork the upstream repo: `gh repo fork <upstream_url> --clone=false`
+2. Configure remotes in `want_to_improve/`:
+   ```bash
+   git -C want_to_improve remote rename origin upstream
+   git -C want_to_improve remote add origin <fork_url>
+   ```
+3. Verify: `git -C want_to_improve remote -v` shows:
+   - `origin` → your fork (push/fetch)
+   - `upstream` → original repo (fetch only)
+4. Record URLs in `docs/user_defined/settings.json`:
+   - `fork_url` → your fork's URL
+   - `upstream_url` → original repo's URL
+
+**If you skip forking** (e.g., you own the repo): set `fork_url = upstream_url` in settings. The system degrades gracefully to same-repo PRs.
+
 ---
 
 ## Step 2 — Goal
@@ -77,6 +98,20 @@ User provides evaluation code or command.
 
 ---
 
+## Step 3b — Agent Count
+
+Ask the user how many parallel agents to run per iteration.
+
+- Ask: "How many parallel agents should explore improvements each iteration?"
+- Explain the tradeoff:
+  - **1 agent**: Best for scratch-level or early-stage repos where the codebase is small, the goal is exploratory, or you want to minimize cost. One hypothesis per iteration, simpler to debug.
+  - **2-3 agents** (default: 3): Good balance for most repos. Multiple hypotheses compete, increasing the chance of finding improvements per iteration.
+  - **4+ agents**: For large codebases with many improvement vectors. Higher cost per iteration but faster exploration of the hypothesis space.
+- If the user is starting from scratch (no existing benchmark, vague goal, small repo), suggest starting with **1 agent** and scaling up after the first few iterations prove the loop works.
+- Set `number_of_agents` in `docs/user_defined/settings.json`.
+
+---
+
 ## Step 4 — Harness
 
 Configure guardrail rules in `docs/user_defined/harness.md`.
@@ -98,3 +133,14 @@ All of the following must be `true` before the improvement loop can start:
 | `si_setting_goal` | `docs/agent_defined/settings.json` |
 | `si_setting_benchmark` | `docs/agent_defined/settings.json` |
 | `si_setting_harness` | `docs/agent_defined/settings.json` |
+
+---
+
+## After Setup
+
+Once all gates pass, **restart the Claude Code session** before starting the improvement loop. This ensures:
+- The orchestrator loads fresh settings (agent count, benchmark command, fork config)
+- `.claude/` has the latest installed agents and skills from Step 0
+- No stale state from the setup conversation carries over into the loop
+
+To start the loop, open a new session and run `claude` from the project root. The orchestrator will detect all gates are `true` and begin automatically.

@@ -15,6 +15,7 @@ This document defines the canonical JSON schemas for all messages exchanged betw
 7. [Failure Analysis Object](#7-failure-analysis-object)
 8. [Iteration State](#8-iteration-state)
 9. [Merge Report](#9-merge-report)
+10. [Plan Archive](#10-plan-archive)
 
 ---
 
@@ -464,3 +465,20 @@ After each tournament, the github_manager produces a merge report summarizing th
   "reason": null
 }
 ```
+
+---
+
+## 10. Plan Archive
+
+**Producer:** orchestrator (Step 9f)
+**Consumer:** researchers, planners, humans
+
+Plan documents are archived after each iteration for persistent cross-session access. This ensures that the full history of what was proposed (not just what won or lost) survives across sessions and can be reviewed later.
+
+**Location:** `docs/agent_defined/plan_archive/round_{n}/`
+
+**Contents:** Exact copies of all plan JSON files from `docs/plans/round_{n}/`, including critic reviews and architect reviews. Files are copied, not moved — `docs/plans/` remains the active working directory for the current session.
+
+**Naming:** `plan_planner_{id}.json` (same as source)
+
+**Retention:** Permanent. Plan archives are never deleted automatically. They provide a complete record of every hypothesis considered across all iterations, complementing the iteration history records which only capture outcomes.

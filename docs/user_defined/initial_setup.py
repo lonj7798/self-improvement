@@ -197,7 +197,75 @@ def step1_repository(user_settings: dict) -> bool:
         return False
 
     user_settings["current_repo_url"] = url
+    user_settings["upstream_url"] = url
     save_json(USER_SETTINGS, user_settings)
+
+    # Fork setup
+    gh_available = False
+    try:
+        subprocess.run(
+            ["gh", "auth", "status"],
+            capture_output=True, text=True, check=True,
+        )
+        gh_available = True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    if gh_available and confirm("Fork this repo for the improvement loop? (recommended)"):
+        print(f"Forking {url}...")
+        try:
+            result = subprocess.run(
+                ["gh", "repo", "fork", url, "--clone=false"],
+                capture_output=True, text=True, check=True,
+            )
+            # Get the fork URL from gh
+            fork_result = subprocess.run(
+                ["gh", "repo", "view", "--json", "url", "-q", ".url"],
+                capture_output=True, text=True, check=True,
+                cwd=str(want_to_improve),
+            )
+            # Reconfigure remotes: origin=fork, upstream=original
+            subprocess.run(
+                ["git", "-C", str(want_to_improve), "remote", "rename", "origin", "upstream"],
+                capture_output=True, text=True, check=True,
+            )
+            # Get fork URL by querying gh for the authenticated user's fork
+            fork_list = subprocess.run(
+                ["gh", "repo", "list", "--fork", "--json", "url,parent", "-q",
+                 f'[.[] | select(.parent.url == "{url}" or .parent.url == "{url}.git")][0].url'],
+                capture_output=True, text=True,
+            )
+            fork_url = fork_list.stdout.strip()
+            if not fork_url:
+                # Fallback: construct from gh auth status
+                whoami = subprocess.run(
+                    ["gh", "api", "user", "-q", ".login"],
+                    capture_output=True, text=True,
+                )
+                username = whoami.stdout.strip()
+                repo_name = url.rstrip("/").rstrip(".git").split("/")[-1]
+                fork_url = f"https://github.com/{username}/{repo_name}.git"
+
+            subprocess.run(
+                ["git", "-C", str(want_to_improve), "remote", "add", "origin", fork_url],
+                capture_output=True, text=True, check=True,
+            )
+            user_settings["fork_url"] = fork_url
+            save_json(USER_SETTINGS, user_settings)
+            print(f"Fork configured: origin={fork_url}, upstream={url}")
+        except subprocess.CalledProcessError as e:
+            print(f"Fork setup failed: {e.stderr or e}")
+            print("Falling back to same-repo mode (fork_url = upstream_url).")
+            user_settings["fork_url"] = url
+            save_json(USER_SETTINGS, user_settings)
+    else:
+        if not gh_available:
+            print("Note: gh CLI not found or not authenticated. Skipping fork.")
+            print("  Install: https://cli.github.com/")
+            print("  Auth:    gh auth login")
+        print("Using same-repo mode (fork_url = upstream_url).")
+        user_settings["fork_url"] = url
+        save_json(USER_SETTINGS, user_settings)
 
     # Update repo.md
     description = prompt("Brief description of the repo (optional)")
@@ -374,6 +442,53 @@ def step3_benchmark(user_settings: dict, agent_settings: dict) -> bool:
         return False
 
 
+def step3b_agent_count(user_settings: dict) -> bool:
+    """Configure how many parallel agents to run per iteration."""
+    print("\n=== Step 3b: Agent Count ===")
+    current = user_settings.get("number_of_agents", 3)
+    print(f"Current setting: {current} agent(s) per iteration.")
+    print()
+    print("How many parallel agents should explore improvements each iteration?")
+    print("  1 agent  — Best for scratch-level or early-stage repos.")
+    print("             One hypothesis per iteration, simpler to debug, lower cost.")
+    print("  2-3      — Good balance for most repos (default: 3).")
+    print("             Multiple hypotheses compete each round.")
+    print("  4+       — For large codebases with many improvement vectors.")
+    print("             Higher cost but faster exploration.")
+    print()
+
+    # Detect scratch-level signals
+    want_to_improve = ROOT / "want_to_improve"
+    is_scratch = False
+    if want_to_improve.exists():
+        file_count = sum(1 for _ in want_to_improve.rglob("*") if _.is_file() and ".git" not in _.parts)
+        if file_count < 20:
+            is_scratch = True
+            print(f"  Note: The repo has only {file_count} files.")
+            print("  Suggestion: Start with 1 agent and scale up after the loop proves itself.")
+            print()
+
+    default = "1" if is_scratch else str(current)
+    count_str = prompt("Number of agents", default)
+    try:
+        count = int(count_str)
+        if count < 1:
+            print("Must be at least 1. Setting to 1.")
+            count = 1
+        if count > 10:
+            print(f"Warning: {count} agents is high. Each runs a full benchmark per iteration.")
+            if not confirm("Continue with this count?"):
+                count = 3
+    except ValueError:
+        print(f"Invalid number '{count_str}'. Using default ({default}).")
+        count = int(default)
+
+    user_settings["number_of_agents"] = count
+    save_json(USER_SETTINGS, user_settings)
+    print(f"Agent count set to {count}.")
+    return True
+
+
 def step4_harness(agent_settings: dict) -> bool:
     """Configure harness rules."""
     print("\n=== Step 4: Harness ===")
@@ -463,6 +578,10 @@ def main():
     step3_benchmark(user_settings, agent_settings)
     user_settings = load_json(USER_SETTINGS)
     agent_settings = load_json(AGENT_SETTINGS)
+
+    # Step 3b
+    step3b_agent_count(user_settings)
+    user_settings = load_json(USER_SETTINGS)
 
     # Step 4
     step4_harness(agent_settings)

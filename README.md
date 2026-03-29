@@ -107,9 +107,9 @@ while goal not met:
 
 ### Git Strategy
 
-The system uses a branch-per-experiment model:
+The system uses a fork-based branch-per-experiment model. All git operations (branches, worktrees, merges) happen inside `want_to_improve/` (the forked repo clone), not in the self-improvement project root.
 
-- **`improve/{goal_slug}`** — accumulation branch. Only winning changes merge here. `git log` shows a clean history of improvements with scores.
+- **`improve/{goal_slug}`** — accumulation branch. Only winning changes merge here. `git log` shows a clean history of improvements with scores. Pushed to the fork after each winner for backup.
 - **`experiment/round_{n}_executor_{id}`** — short-lived branches for each experiment. Created via `git worktree add` for full isolation.
 - **`archive/round_{n}_executor_{id}`** — losing branches are tagged before deletion so commits remain reachable.
 

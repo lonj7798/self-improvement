@@ -61,7 +61,7 @@ Understand what the plan is trying to do. Read the `hypothesis` and `expected_ou
 
 ### Step 2 — Verify the Worktree
 
-Your worktree directory has been created by the orchestrator via `git worktree add`. Verify it exists and contains the repo. Do not create it yourself. Your worktree must be completely isolated — no shared state with other executors.
+Your worktree directory has been created by the orchestrator via `git -C want_to_improve worktree add`. Verify it exists and contains the repo. Do not create it yourself. Your worktree must be completely isolated — no shared state with other executors.
 
 Before making any changes, record the current baseline benchmark score by running the benchmark command once. Store this as `baseline_score` for your own reference (it is not part of the result schema, but you need it to detect regression).
 
