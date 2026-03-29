@@ -218,12 +218,6 @@ def step1_repository(user_settings: dict) -> bool:
                 ["gh", "repo", "fork", url, "--clone=false"],
                 capture_output=True, text=True, check=True,
             )
-            # Get the fork URL from gh
-            fork_result = subprocess.run(
-                ["gh", "repo", "view", "--json", "url", "-q", ".url"],
-                capture_output=True, text=True, check=True,
-                cwd=str(want_to_improve),
-            )
             # Reconfigure remotes: origin=fork, upstream=original
             subprocess.run(
                 ["git", "-C", str(want_to_improve), "remote", "rename", "origin", "upstream"],
@@ -243,8 +237,11 @@ def step1_repository(user_settings: dict) -> bool:
                     capture_output=True, text=True,
                 )
                 username = whoami.stdout.strip()
-                repo_name = url.rstrip("/").rstrip(".git").split("/")[-1]
-                fork_url = f"https://github.com/{username}/{repo_name}.git"
+                repo_name = url.rstrip("/").removesuffix(".git").split("/")[-1]
+                if url.startswith("git@") or url.startswith("ssh://"):
+                    fork_url = f"git@github.com:{username}/{repo_name}.git"
+                else:
+                    fork_url = f"https://github.com/{username}/{repo_name}.git"
 
             subprocess.run(
                 ["git", "-C", str(want_to_improve), "remote", "add", "origin", fork_url],

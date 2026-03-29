@@ -271,6 +271,19 @@ check_plan_schema() {
 
     ok "steps is non-empty (${steps_len} step(s))."
 
+    # check: each step must have step, file, change sub-fields
+    for i in $(seq 0 $((steps_len - 1))); do
+        for sub in step file change; do
+            val=$(jq -r --argjson i "$i" --arg f "$sub" '.steps[$i][$f]' "${plan_file}" 2>/dev/null)
+            if [[ "${val}" == "null" || -z "${val}" ]]; then
+                err "steps[$i] is missing required field: ${sub}"
+                exit 1
+            fi
+        done
+    done
+
+    ok "All steps have required sub-fields (step, file, change)."
+
     # check d: one-hypothesis check — hypothesis must be a non-empty string, not array
     hypothesis_type=$(jq -r '.hypothesis | type' "${plan_file}" 2>/dev/null)
     if [[ "${hypothesis_type}" != "string" ]]; then

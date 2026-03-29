@@ -129,11 +129,11 @@ Status: running
 [Iteration {N}] Checking for user ideas...
 ```
 
-Read `docs/user_defined/idea.md`.
+Read `docs/user_defined/idea.md`. Snapshot the contents immediately — do NOT clear the file yet (planners need it in Step 7a).
 - If the file contains ideas (not just the template comment), treat them as **highest-priority input** for this iteration's planners.
 - `planner_a` MUST use a user idea if one is available. Other planners may use user ideas or research brief ideas.
-- After all planners have consumed the ideas, **clear `idea.md`** back to its empty template.
 - Log consumed user ideas in the iteration history record with `source: "user_idea"`.
+- **Do NOT clear `idea.md` here.** Clearing happens in Step 7a After block, after planners have read the ideas.
 
 **After**: Update `iteration_state.json`: `user_ideas_consumed: [list]`. Print:
 ```
@@ -142,7 +142,7 @@ Read `docs/user_defined/idea.md`.
 
 ### Step 6 — Research → Agent: `si-researcher`
 
-**Before**: Update `iteration_state.json`: `current_step: "research"`, `research.status: "in_progress"`, `updated_at: <now>`. Print:
+**Before**: Re-read `docs/user_defined/settings.json` for latest config. Update `iteration_state.json`: `current_step: "research"`, `research.status: "in_progress"`, `updated_at: <now>`. Print:
 ```
 [Iteration {N}] Starting research...
 ```
@@ -167,7 +167,7 @@ On failure: `research.status: "failed"`. Print:
 
 ### Step 7a — Planning → Agent: `si-planner` (uses sub-skills: `si-plan-creator`, `si-plan-architect`)
 
-**Before**: Update `iteration_state.json`: `current_step: "planning"`, `planning.status: "in_progress"`, `updated_at: <now>`. Print:
+**Before**: Re-read `docs/user_defined/settings.json` for latest `number_of_agents`. Update `iteration_state.json`: `current_step: "planning"`, `planning.status: "in_progress"`, `updated_at: <now>`. Print:
 ```
 [Iteration {N}] Spawning {N_agents} planners in parallel...
 ```
@@ -181,7 +181,7 @@ Each planner receives:
 
 Collect plan files from `docs/plans/round_{n}/plan_planner_{id}.json`.
 
-**After**: Update `iteration_state.json`: for each planner, set `planning.plans.{planner_id}.status: "completed"`, `planning.plans.{planner_id}.output_path: <path>`. Print:
+**After**: Update `iteration_state.json`: for each planner, set `planning.plans.{planner_id}.status: "completed"`, `planning.plans.{planner_id}.output_path: <path>`. If user ideas were consumed this iteration, **clear `idea.md`** back to its empty template now (planners have already read the ideas). Print:
 ```
 [Iteration {N}] Planning complete. Plans:
   - planner_a: "{hypothesis}" (family: {approach_family})
@@ -212,7 +212,7 @@ If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected
 
 ### Step 8 — Execution → Agent: `si-executor`
 
-**Before**: Update `iteration_state.json`: `current_step: "execution"`, `execution.status: "in_progress"`, `updated_at: <now>`. For each executor, set `execution.executors.{executor_id}.status: "pending"`, `execution.executors.{executor_id}.plan_id: <plan_id>`. Print:
+**Before**: Re-read `docs/user_defined/settings.json` for latest `benchmark_command` and `sealed_files`. Update `iteration_state.json`: `current_step: "execution"`, `execution.status: "in_progress"`, `updated_at: <now>`. For each executor, set `execution.executors.{executor_id}.status: "pending"`, `execution.executors.{executor_id}.plan_id: <plan_id>`. Print:
 ```
 [Iteration {N}] Spawning {count} executors in parallel...
   - executor_1 → plan "{hypothesis}" (worktree: want_to_improve/worktrees/round_{n}_executor_1/)
@@ -241,6 +241,8 @@ Collect result files from `want_to_improve/worktrees/round_{n}_executor_{id}/res
   - executor_1: {status} (score: {score}, plan: "{hypothesis}")
   - executor_2: {status} (score: {score}, plan: "{hypothesis}")
 ```
+
+If ALL executors failed or produced non-`success` status, skip Step 8a (tournament) and proceed directly to Step 9. Record all failures in iteration history.
 
 ### Step 8a — Tournament Selection → Agent: `si-github-manager`
 
@@ -299,7 +301,7 @@ Print:
 [Iteration {N}] 9c: Visualization updated → tracking_history/progress.png
 ```
 
-**9d — Clean up**: Remove worktrees for this round inside `want_to_improve/`:
+**9d — Clean up**: If execution ran this iteration (i.e., `execution.status != "pending"`), remove worktrees for this round inside `want_to_improve/`:
 ```
 git -C want_to_improve worktree remove worktrees/round_{n}_executor_{id} --force
 ```
@@ -307,12 +309,12 @@ git -C want_to_improve worktree remove worktrees/round_{n}_executor_{id} --force
 ```
 git -C want_to_improve worktree prune
 ```
-Print:
+If execution was skipped (all plans rejected), skip this step. Print:
 ```
 [Iteration {N}] 9d: Worktrees cleaned up ({count} removed).
 ```
 
-**9e — Update iteration state**: set `docs/agent_defined/iteration_state.json` status to `"completed"`. Print:
+**9e — Update iteration state**: set `docs/agent_defined/iteration_state.json`: `recording.status: "completed"`, top-level `status: "completed"`. Print:
 ```
 [Iteration {N}] 9e: Iteration state → completed.
 ```
@@ -336,10 +338,13 @@ This preserves plans permanently even if `docs/plans/` is cleaned between runs. 
 
 ### Step 10 — Stop Condition Check
 
+**Before**: Update `iteration_state.json`: `current_step: "stop_check"`, `updated_at: <now>`. Re-read `docs/agent_defined/settings.json` for latest counters.
+
 Evaluate ALL conditions. If ANY is true, exit the loop:
 
 | Condition | Check | Action |
 |---|---|---|
+| **User stop requested** | `status == "stop_requested"` in `docs/agent_defined/settings.json` | Exit with `status: "user_stopped"` |
 | **Target reached** | `best_score` meets or exceeds `target_value` (respecting `benchmark_direction`). If `target_value` is `null`, skip this condition. | Exit with `status: "target_reached"` |
 | **Plateau** | `plateau_consecutive_count` >= `plateau_window` | Exit with `status: "plateau"` |
 | **Max iterations** | `iterations` >= `max_iterations` | Exit with `status: "max_iterations"` |
@@ -348,6 +353,7 @@ Evaluate ALL conditions. If ANY is true, exit the loop:
 Print stop condition evaluation:
 ```
 [Iteration {N}] Stop check:
+  User stop requested: {yes/no}
   Target reached: {yes/no} (best={best_score}, target={target_value})
   Plateau: {yes/no} ({plateau_count}/{plateau_window} consecutive)
   Max iterations: {yes/no} ({iterations}/{max_iterations})

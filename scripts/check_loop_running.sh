@@ -15,7 +15,7 @@ fi
 
 status=$(jq -r '.status // "idle"' "${AGENT_SETTINGS}" 2>/dev/null || echo "idle")
 
-if [[ "${status}" == "running" ]]; then
+if [[ "${status}" == "running" || "${status}" == "stop_requested" ]]; then
   iterations=$(jq -r '.iterations // 0' "${AGENT_SETTINGS}" 2>/dev/null || echo "0")
   best_score=$(jq -r '.best_score // "null"' "${AGENT_SETTINGS}" 2>/dev/null || echo "null")
   current_step="unknown"

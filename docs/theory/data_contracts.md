@@ -350,7 +350,7 @@ Tracks the progress of a single iteration for robust resumability. The orchestra
 |---|---|---|
 | `iteration` | integer | The iteration number currently in progress. |
 | `status` | string | One of: `in_progress`, `completed`, `failed`, `interrupted`. |
-| `current_step` | string | One of: `research`, `planning`, `critic_review`, `execution`, `tournament`, `recording`, `visualization`, `cleanup`, `stop_check`. |
+| `current_step` | string | One of: `pre_loop_validation`, `user_ideas`, `research`, `planning`, `critic_review`, `execution`, `tournament`, `recording`, `visualization`, `cleanup`, `stop_check`. |
 | `started_at` | string | ISO 8601 timestamp of when this iteration began. |
 | `updated_at` | string | ISO 8601 timestamp of last state update. |
 | `research` | object | Status of the research step. Fields: `status` (pending/in_progress/completed/failed/skipped), `output_path` (string or null), `completed_at` (string or null). |

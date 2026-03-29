@@ -136,7 +136,7 @@ On any other status: do not commit the changes (or commit them to the branch for
 
 ### Step 8 — Write the Result
 
-Write the result JSON to `{own_directory}/result.json`. The result must match the Benchmark Result schema from `docs/theory/data_contracts.md`:
+Write the result JSON to `{worktree_dir}/result.json`. The result must match the Benchmark Result schema from `docs/theory/data_contracts.md`:
 
 ```json
 {
@@ -158,7 +158,7 @@ After writing `result.json`, your job is done. Do not attempt cleanup, do not co
 
 ## Outputs
 
-- **`{own_directory}/result.json`** — A Benchmark Result JSON object matching the schema in `docs/theory/data_contracts.md`.
+- **`{worktree_dir}/result.json`** — A Benchmark Result JSON object matching the schema in `docs/theory/data_contracts.md`.
 
 Required fields:
 

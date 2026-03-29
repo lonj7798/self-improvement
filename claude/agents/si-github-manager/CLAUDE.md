@@ -147,6 +147,8 @@ When the loop controller signals that the goal has been reached (target metric a
    git -C {repo_path} push origin improve/{goal_slug}
    ```
 3. Read `fork_url` and `upstream_url` from `{project_root}/docs/user_defined/settings.json`.
+   **Validate:** If `upstream_url` is empty, report error: "upstream_url not configured in settings.json. Run setup first." Do not attempt PR creation with empty URLs.
+   **Parse owner/repo:** For HTTPS URLs (`https://github.com/owner/repo.git`), split on `/`. For SSH URLs (`git@github.com:owner/repo.git`), split on `:` then `/`. Strip trailing `.git` using `removesuffix`, not `rstrip`.
 4. Create the pull request:
 
    **Fork mode** (`fork_url != upstream_url` and `fork_url` is not empty):

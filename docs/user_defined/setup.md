@@ -144,3 +144,29 @@ Once all gates pass, **restart the Claude Code session** before starting the imp
 - No stale state from the setup conversation carries over into the loop
 
 To start the loop, open a new session and run `claude` from the project root. The orchestrator will detect all gates are `true` and begin automatically.
+
+## How to Stop the Loop
+
+To gracefully stop the improvement loop after the current iteration finishes:
+
+1. Open `docs/agent_defined/settings.json`
+2. Set `"status": "stop_requested"`
+3. Save the file
+
+The loop will complete its current iteration, then exit cleanly at Step 10 with `status: "user_stopped"`. No work is lost — the current iteration's results are fully recorded before stopping.
+
+**Other ways to stop:**
+- Set `max_iterations` in `docs/user_defined/settings.json` to the current iteration count (stops at Step 10)
+- Kill the Claude Code session (ungraceful — may leave partial state, but resumability handles it)
+
+## On-the-Fly Changes
+
+While the loop is running, you can modify these files and they take effect at the next iteration:
+
+| File | What to change | When it takes effect |
+|------|---------------|---------------------|
+| `docs/user_defined/idea.md` | Add experiment ideas | Next Step 5 (planners read them) |
+| `docs/user_defined/settings.json` | `number_of_agents`, `target_value`, `max_iterations`, `sealed_files` | Next iteration start (settings re-read at each step) |
+| `docs/agent_defined/settings.json` | `status` → `"stop_requested"` | Next Step 10 (graceful stop) |
+
+**Note:** Changing `benchmark_command` mid-loop makes old scores incomparable. If you change it, also reset `best_score` to `null` in `docs/agent_defined/settings.json`.
