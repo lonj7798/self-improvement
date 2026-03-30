@@ -27,8 +27,8 @@ Read these files at startup, at the beginning of each iteration, **and before ea
 
 | File | Purpose |
 |---|---|
-| `docs/user_defined/settings.json` | User configuration: `number_of_agents`, `benchmark_command`, `benchmark_format`, `benchmark_direction`, `max_iterations`, `plateau_threshold`, `plateau_window`, `target_value`, `primary_metric`, `sealed_files`, `regression_threshold`, `circuit_breaker_threshold` |
-| `docs/agent_defined/settings.json` | Runtime state: `iterations`, `si_setting_goal`, `si_setting_benchmark`, `si_setting_harness`, `best_score`, `current_milestone`, `plateau_consecutive_count`, `circuit_breaker_count`, `status` |
+| `docs/user_defined/settings.json` | User configuration: `number_of_agents`, `benchmark_command`, `benchmark_format` (`"json"`, `"number"`, or `"pass_fail"`), `benchmark_direction`, `max_iterations`, `plateau_threshold`, `plateau_window`, `target_value`, `primary_metric` (default: `"primary"`), `sealed_files`, `regression_threshold`, `circuit_breaker_threshold` |
+| `docs/agent_defined/settings.json` | Runtime state: `iterations`, `si_setting_goal`, `si_setting_benchmark`, `si_setting_harness`, `best_score`, `current_milestone`, `current_phase` (active goal phase name or null), `plateau_consecutive_count`, `circuit_breaker_count`, `status` |
 | `docs/agent_defined/iteration_state.json` | Per-iteration progress tracking for resumability (see [Iteration State Tracking](#iteration-state-tracking)) |
 | `docs/user_defined/goal.md` | Improvement objective, target metric, scope, milestones, experiment ideas |
 | `docs/user_defined/harness.md` | Guardrail rules (H001, H002, H003, custom rules) |
@@ -296,9 +296,22 @@ Print:
 [Iteration {N}] 9b: State updated. iterations={i}, best_score={s}, plateau_count={p}, circuit_breaker={c}
 ```
 
-**9c — Update visualization**: append flat entries to `tracking_history/raw_data.json` (one entry per candidate with fields: `iteration`, `plan_id`, `benchmark_score`, `is_winner`, `approach_family`), then run `python3 scripts/plot_progress.py`. This step is mandatory — never skip visualization. Print:
+**9c — Update visualization**: append flat entries to `tracking_history/raw_data.json` (one entry per candidate with fields: `iteration`, `plan_id`, `benchmark_score`, `is_winner`, `approach_family`, `sub_scores`). Include `sub_scores` from each executor's `result.json` (object or null). Then run `python3 scripts/plot_progress.py`. This step is mandatory — never skip visualization. Print:
 ```
 [Iteration {N}] 9c: Visualization updated → tracking_history/progress.png
+```
+
+**9c-events — Log events**: After updating visualization, check if any tracked settings changed since the last iteration by comparing current `docs/user_defined/settings.json` values against cached values from iteration start. Tracked fields: `benchmark_command`, `number_of_agents`, `target_value`, `sealed_files`. For each changed field, append an event to `tracking_history/events.json`:
+```json
+{"timestamp": "<ISO 8601>", "event_type": "config_change", "iteration": <N>, "details": {"field": "<name>", "old_value": <old>, "new_value": <new>, "source": "user"}}
+```
+Also check `current_phase` in `docs/agent_defined/settings.json` — if it changed, log a `phase_transition` event:
+```json
+{"timestamp": "<ISO 8601>", "event_type": "phase_transition", "iteration": <N>, "details": {"from_phase": "<old>", "to_phase": "<new>", "reason": "user-initiated"}}
+```
+Print:
+```
+[Iteration {N}] 9c-events: {count} event(s) logged.
 ```
 
 **9d — Clean up**: If execution ran this iteration (i.e., `execution.status != "pending"`), remove worktrees for this round inside `want_to_improve/`:

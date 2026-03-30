@@ -26,6 +26,18 @@
 | M3 | | Harder optimizations |
 | M4 | | Final push to target |
 
+## Phases (optional)
+<!-- Break the goal into named phases, each targeting specific sub-scores. -->
+<!-- Phases are sequential. Only one phase is active at a time. -->
+<!-- Phase transitions are user-controlled — set current_phase in docs/agent_defined/settings.json. -->
+<!-- The primary benchmark_score always drives tournament selection regardless of phase. -->
+
+| Phase | Focus | Sub-Score Targets | Status |
+|-------|-------|-------------------|--------|
+|       |       |                   | active |
+|       |       |                   | pending |
+|       |       |                   | pending |
+
 ## Experiment Ideas (optional)
 <!-- If you already know what to try, list ideas here. Planners will use these directly. -->
 <!-- If empty, the researcher agent will explore the repo and search externally for ideas. -->

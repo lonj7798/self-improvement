@@ -37,8 +37,9 @@ Before starting, verify you have all of the following:
 | Worktree directory path | Provided by loop controller | Unique absolute path for this executor. No two executors share a directory. |
 | Benchmark command | `docs/user_defined/settings.json` → `benchmark_command` | The exact shell command to run the benchmark. Do not modify it. |
 | Sealed files list | `docs/user_defined/settings.json` → `sealed_files` | List of relative file paths you must never modify. |
-| Benchmark format | `docs/user_defined/settings.json` → `benchmark_format` | Either `"number"` (extract a numeric score) or `"pass_fail"` (check pass/fail). |
+| Benchmark format | `docs/user_defined/settings.json` → `benchmark_format` | One of: `"json"` (parse JSON last line with `primary` + `sub_scores`), `"number"` (extract a numeric score), or `"pass_fail"` (check pass/fail). |
 | Benchmark direction | `docs/user_defined/settings.json` → `benchmark_direction` | Either `"higher_is_better"` or `"lower_is_better"`. Used to evaluate regression vs. improvement. |
+| Primary metric key | `docs/user_defined/settings.json` → `primary_metric` | The key name in the JSON benchmark output that holds the primary score (default: `"primary"`). Only used when `benchmark_format` is `"json"`. |
 
 If any required input is missing or malformed, set `status: "error"`, populate `failure_analysis` with `category: "infrastructure"`, and write the result immediately. Do not proceed.
 
@@ -109,8 +110,13 @@ Apply a reasonable timeout. If the benchmark does not complete within the allowe
 
 Parse the output according to `benchmark_format`:
 
-- **`"number"`**: Extract the primary numeric metric from stdout. If you cannot parse a number from the output, set `status: "error"`, `failure_analysis.category: "benchmark_parse_error"`.
-- **`"pass_fail"`**: Check whether the output indicates pass or fail. Map pass to `benchmark_score: 1.0` and fail to `benchmark_score: 0.0`.
+- **`"json"`**: Parse the **last line** of stdout as a JSON object. Extract the primary score from the key specified by `primary_metric` in settings (default: `"primary"`). Extract `sub_scores` from the `"sub_scores"` key (a flat object with string keys and numeric values). If the last line is not valid JSON, set `status: "error"`, `failure_analysis.category: "benchmark_parse_error"`. See `example_benchmark_output.json` in this agent's directory for the expected format:
+  ```json
+  {"primary": 85.2, "sub_scores": {"detailed_score_a": 85.2, "detailed_score_b": 42.3, "detailed_score_c": 512}}
+  ```
+  The `sub_scores` key is optional — if absent, set `sub_scores` to `null` in the result. Sub-score keys are discovered from the output (schemaless — no upfront declaration required).
+- **`"number"`**: Extract the primary numeric metric from stdout (last line). If you cannot parse a number from the output, set `status: "error"`, `failure_analysis.category: "benchmark_parse_error"`. Set `sub_scores` to `null`.
+- **`"pass_fail"`**: Check whether the output indicates pass or fail. Map pass to `benchmark_score: 1.0` and fail to `benchmark_score: 0.0`. Set `sub_scores` to `null`.
 
 Store the full stdout as `benchmark_raw` verbatim. Do not truncate it.
 
@@ -130,6 +136,8 @@ Determine status:
 | Benchmark could not run (crash, parse error, validation failure) | `"error"` |
 | Benchmark exceeded time limit | `"timeout"` |
 
+**Sub-score values are recorded but do NOT affect the status determination.** Only `benchmark_score` (the primary metric) determines success/regression/error/timeout. Sub-score regression checking is deferred to a future phase.
+
 On `"success"`: commit all changes to your branch with a clear commit message referencing `plan_id`. Set `failure_analysis: null`.
 
 On any other status: do not commit the changes (or commit them to the branch for inspection, but note in the result that the changes were not merged). Populate `failure_analysis` thoroughly — see Error Handling.
@@ -143,8 +151,13 @@ Write the result JSON to `{worktree_dir}/result.json`. The result must match the
   "executor_id": "executor_{id}",
   "plan_id": "round_{n}_planner_{x}",
   "benchmark_score": 85.2,
-  "benchmark_raw": "accuracy: 85.2%\n...",
+  "benchmark_raw": "{\"primary\": 85.2, \"sub_scores\": {\"accuracy\": 85.2, \"latency_ms\": 42.3, \"memory_mb\": 512}}",
   "status": "success",
+  "sub_scores": {
+    "detailed_score_a": 85.2,
+    "detailed_score_b": 42.3,
+    "detailed_score_c": 512
+  },
   "failure_analysis": null,
   "timestamp": "2026-03-28T10:00:00Z"
 }
@@ -169,6 +182,7 @@ Required fields:
 | `benchmark_score` | number | Parsed primary metric. Use `0.0` if benchmark could not run. |
 | `benchmark_raw` | string | Full verbatim stdout from the benchmark run. Empty string if benchmark never ran. |
 | `status` | string | One of: `"success"`, `"regression"`, `"error"`, `"timeout"`. See `docs/theory/data_contracts.md` Section 2 for definitions. |
+| `sub_scores` | object or null | Dictionary of sub-score names to numeric values. Extracted from JSON benchmark output. `null` when benchmark_format is not `"json"` or when sub_scores are not present in the output. |
 | `failure_analysis` | object or null | `null` on `success`. Populated on all other statuses — see below. |
 | `timestamp` | string | ISO 8601 UTC timestamp of benchmark completion |
 

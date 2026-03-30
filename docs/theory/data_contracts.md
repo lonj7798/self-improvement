@@ -16,6 +16,8 @@ This document defines the canonical JSON schemas for all messages exchanged betw
 8. [Iteration State](#8-iteration-state)
 9. [Merge Report](#9-merge-report)
 10. [Plan Archive](#10-plan-archive)
+11. [Event Log](#11-event-log)
+12. [Goal Phase](#12-goal-phase)
 
 ---
 
@@ -97,6 +99,7 @@ A benchmark result records the outcome of executing a plan. The executor fills t
 | `benchmark_score` | number | Numeric value of the primary metric. Higher is better unless otherwise specified in `settings.json`. |
 | `benchmark_raw` | string | Raw stdout/output string from the benchmark run, preserved verbatim for debugging. |
 | `status` | string | One of: `success`, `regression`, `error`, `timeout`. See status definitions below. |
+| `sub_scores` | object or null | Optional dictionary of additional scoring dimensions. Keys are metric names (strings), values are numeric scores. `null` or `{}` when the benchmark produces only a single score. Discovered from benchmark output (schemaless — no upfront declaration required). |
 | `failure_analysis` | object or null | `null` on `success`. On any other status, a populated [Failure Analysis Object](#7-failure-analysis-object). |
 | `timestamp` | string | ISO 8601 UTC timestamp of when the benchmark completed. |
 
@@ -113,8 +116,13 @@ A benchmark result records the outcome of executing a plan. The executor fills t
   "executor_id": "executor_1",
   "plan_id": "round_1_planner_a",
   "benchmark_score": 85.2,
-  "benchmark_raw": "accuracy: 85.2%",
+  "benchmark_raw": "{\"primary\": 85.2, \"sub_scores\": {\"detailed_score_a\": 85.2, \"detailed_score_b\": 42.3, \"detailed_score_c\": 512}}",
   "status": "success",
+  "sub_scores": {
+    "detailed_score_a": 85.2,
+    "detailed_score_b": 42.3,
+    "detailed_score_c": 512
+  },
   "failure_analysis": null,
   "timestamp": "2026-03-28T10:00:00Z"
 }
@@ -196,6 +204,7 @@ After each iteration the orchestrator writes one history record capturing what w
 | `score` | number | Benchmark score achieved by this plan. |
 | `approach_family` | string | Approach family tag from the winning plan. |
 | `hypothesis` | string | The hypothesis that was confirmed. |
+| `sub_scores` | object or null | Sub-score dimensions from the winning executor's benchmark output. `null` if not available. |
 
 **Loser object fields:**
 
@@ -205,6 +214,7 @@ After each iteration the orchestrator writes one history record capturing what w
 | `score` | number | Benchmark score achieved (may be lower than baseline). |
 | `approach_family` | string | Approach family tag from the losing plan. |
 | `hypothesis` | string | The hypothesis that was refuted or failed to confirm. |
+| `sub_scores` | object or null | Sub-score dimensions from this executor's benchmark output. `null` if not available. |
 | `failure_analysis` | object | A [Failure Analysis Object](#7-failure-analysis-object) with structured breakdown of why this plan lost. |
 
 ### Example
@@ -217,7 +227,8 @@ After each iteration the orchestrator writes one history record capturing what w
     "plan_id": "round_1_planner_a",
     "score": 85.2,
     "approach_family": "training_config",
-    "hypothesis": "AdamW optimizer improves convergence"
+    "hypothesis": "AdamW optimizer improves convergence",
+    "sub_scores": {"detailed_score_a": 85.2, "detailed_score_b": 42.3}
   },
   "losers": [
     {
@@ -225,6 +236,7 @@ After each iteration the orchestrator writes one history record capturing what w
       "score": 78.5,
       "approach_family": "architecture",
       "hypothesis": "Add dropout for regularization",
+      "sub_scores": {"detailed_score_a": 78.5, "detailed_score_b": 55.1},
       "failure_analysis": {
         "what": "Score dropped from 80.0 to 78.5",
         "why": "Dropout caused underfitting on small dataset — regularization counterproductive",
@@ -257,13 +269,14 @@ The file contains a JSON array. Each element represents one candidate from one i
 | `benchmark_score` | number | Benchmark score achieved. |
 | `is_winner` | boolean | `true` if this candidate won the tournament. |
 | `approach_family` | string | Approach family tag. |
+| `sub_scores` | object or null | Sub-score dimensions from this candidate's benchmark output. `null` if not available. |
 
 ### Example
 
 ```json
 [
-  { "iteration": 1, "plan_id": "round_1_planner_a", "benchmark_score": 85.2, "is_winner": true, "approach_family": "training_config" },
-  { "iteration": 1, "plan_id": "round_1_planner_b", "benchmark_score": 78.5, "is_winner": false, "approach_family": "architecture" }
+  { "iteration": 1, "plan_id": "round_1_planner_a", "benchmark_score": 85.2, "is_winner": true, "approach_family": "training_config", "sub_scores": {"detailed_score_a": 85.2, "detailed_score_b": 42.3} },
+  { "iteration": 1, "plan_id": "round_1_planner_b", "benchmark_score": 78.5, "is_winner": false, "approach_family": "architecture", "sub_scores": {"detailed_score_a": 78.5, "detailed_score_b": 55.1} }
 ]
 ```
 
@@ -441,6 +454,7 @@ After each tournament, the github_manager produces a merge report summarizing th
 | `hypothesis` | string | The hypothesis from the winning plan. |
 | `score_before` | number | Benchmark score before the merge (on `improve/{goal_slug}`). |
 | `score_after` | number | Benchmark score after the merge (from executor's result). |
+| `sub_scores` | object or null | Sub-score dimensions from the winning executor's benchmark output. `null` if not available. |
 
 ### Example
 
@@ -453,7 +467,12 @@ After each tournament, the github_manager produces a merge report summarizing th
     "branch": "experiment/round_3_executor_2",
     "hypothesis": "Cache intermediate results in the hot path",
     "score_before": 142.3,
-    "score_after": 118.7
+    "score_after": 118.7,
+    "sub_scores": {
+      "detailed_score_a": 85.2,
+      "detailed_score_b": 118.7,
+      "detailed_score_c": 256
+    }
   },
   "archived": [
     "archive/round_3_executor_1",
@@ -482,3 +501,108 @@ Plan documents are archived after each iteration for persistent cross-session ac
 **Naming:** `plan_planner_{id}.json` (same as source)
 
 **Retention:** Permanent. Plan archives are never deleted automatically. They provide a complete record of every hypothesis considered across all iterations, complementing the iteration history records which only capture outcomes.
+
+---
+
+## 11. Event Log
+
+**Producer:** orchestrator
+**Consumer:** visualization (Phase 2), humans
+
+The event log tracks significant state changes in the self-improvement loop: configuration changes, phase transitions, and other notable events. Events are stored as an append-only array. The orchestrator appends new events whenever a tracked setting changes or a goal phase transition occurs.
+
+**File location:** `tracking_history/events.json`
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `timestamp` | string | ISO 8601 UTC timestamp of when the event occurred. |
+| `event_type` | string | One of: `config_change`, `phase_transition`. |
+| `iteration` | integer or null | The iteration number when this event occurred. `null` for events outside the loop (e.g., during setup). |
+| `details` | object | Event-specific payload. Structure depends on `event_type`. |
+
+**`config_change` details:**
+
+| Field | Type | Description |
+|---|---|---|
+| `field` | string | The setting field that changed (e.g., `benchmark_command`, `number_of_agents`, `target_value`, `sealed_files`). |
+| `old_value` | any | The previous value. |
+| `new_value` | any | The new value. |
+| `source` | string | Where the change originated: `user` (manual edit) or `system` (automated). |
+
+**`phase_transition` details:**
+
+| Field | Type | Description |
+|---|---|---|
+| `from_phase` | string or null | The phase being exited. `null` if this is the first phase. |
+| `to_phase` | string | The phase being entered. |
+| `reason` | string | Why the transition occurred (e.g., "all phase targets met", "user-initiated"). |
+
+### Example
+
+```json
+[
+  {
+    "timestamp": "2026-03-28T10:00:00Z",
+    "event_type": "config_change",
+    "iteration": 5,
+    "details": {
+      "field": "number_of_agents",
+      "old_value": 2,
+      "new_value": 3,
+      "source": "user"
+    }
+  },
+  {
+    "timestamp": "2026-03-28T14:00:00Z",
+    "event_type": "phase_transition",
+    "iteration": 12,
+    "details": {
+      "from_phase": "phase_1",
+      "to_phase": "phase_2",
+      "reason": "all phase 1 sub-score targets met"
+    }
+  }
+]
+```
+
+---
+
+## 12. Goal Phase
+
+**Defined in:** `docs/user_defined/goal.md`
+**Tracked in:** `docs/agent_defined/settings.json` (`current_phase` field)
+
+Goal phases are named stages in the improvement goal, each with specific sub-score targets. Phases organize the improvement journey into sequential milestones focused on different dimensions. Phase transitions are user-controlled and logged as events.
+
+### Phase Definition (in goal.md)
+
+Each phase is defined within the `## Phases` section of `goal.md`:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Short identifier for the phase (e.g., `phase_1`, `phase_2`). |
+| `description` | string | What this phase focuses on. |
+| `targets` | object | Dictionary mapping sub-score names to target values. The primary score target is defined separately in the main goal section. |
+| `status` | string | One of: `active`, `completed`, `pending`. Only one phase can be `active` at a time. |
+
+### Phase Tracking (in agent settings.json)
+
+| Field | Type | Description |
+|---|---|---|
+| `current_phase` | string or null | Name of the currently active phase from `goal.md`. `null` if phases are not configured. |
+
+### Example (goal.md phases section)
+
+```markdown
+## Phases
+
+| Phase | Focus | Sub-Score Targets | Status |
+|-------|-------|-------------------|--------|
+| phase_1 | Improve primary dimension | detailed_score_a >= 90.0 | active |
+| phase_2 | Optimize secondary dimension | detailed_score_b <= 50.0, detailed_score_a >= 90.0 | pending |
+| phase_3 | Balance all dimensions | detailed_score_c <= 256, detailed_score_b <= 50.0, detailed_score_a >= 90.0 | pending |
+```
+
+Phase transitions do not affect tournament selection — the primary `benchmark_score` always drives winner selection. Phases provide tracking and strategic guidance only.

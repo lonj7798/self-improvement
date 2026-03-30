@@ -1,0 +1,8 @@
+{
+  "primary": 90.0,
+  "sub_scores": {
+    "detailed_score_a": 0.8,
+    "detailed_score_b": 0.12,
+    "detailed_score_c": 0.9
+  }
+}

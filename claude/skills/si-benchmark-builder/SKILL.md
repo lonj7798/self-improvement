@@ -70,18 +70,22 @@ Design the benchmark with these requirements:
 
 | Requirement | Detail |
 |-------------|--------|
-| **Single numeric output** | One number printed to stdout as the last line |
+| **JSON output (preferred)** | A JSON object printed as the last line of stdout with `primary` (number) and optional `sub_scores` (object). Falls back to single numeric output if simpler. |
 | **Deterministic** | Same code → same score (within tolerance). Use fixed seeds, disable randomness where possible. |
 | **Fast** | Under 5 minutes ideally. If the natural evaluation is slow, sample or subset. |
 | **Self-contained** | No external services, no network calls, no credentials needed |
 | **Honest** | Measures actual quality, not a proxy that can be gamed |
 
-Output format — the benchmark must print the numeric score as the **last line of stdout**. Just the number, nothing else on that line. Example:
+Output format — the benchmark must print a **JSON object as the last line of stdout**. The JSON must contain a `primary` field (the main score) and an optional `sub_scores` object with additional dimensions. Example:
 ```
 Running tests...
 Passed 45/50
-90.0
+{"primary": 90.0, "sub_scores": {"detailed_score_a": 0.92, "detailed_score_b": 0.12}}
 ```
+
+If the benchmark naturally produces multiple metrics (e.g., accuracy, latency, memory), include all of them in `sub_scores`. The `primary` field is used for tournament selection. `sub_scores` keys are free-form strings — they are discovered from the output, not declared upfront. See `example_benchmark_output.json` in this skill's directory for the expected format.
+
+For simple benchmarks that produce only a single score, a plain number on the last line is also accepted (set `benchmark_format: "number"` in settings). But prefer JSON format when possible to enable richer tracking.
 
 This is the format the executor parses. Any other stdout is ignored — only the last line matters.
 
@@ -127,7 +131,8 @@ Command: {command}
 
 Update `docs/user_defined/settings.json` (use Edit to preserve existing keys):
 - `benchmark_command`: the shell command to run (relative to `want_to_improve/`)
-- `benchmark_format`: `"number"` or `"pass_fail"` based on what the benchmark produces
+- `benchmark_format`: `"json"` (preferred, for benchmarks with sub-scores), `"number"`, or `"pass_fail"`
+- `primary_metric`: the key name in the JSON output that holds the primary score (default: `"primary"`). Only relevant when `benchmark_format` is `"json"`.
 
 **Add the benchmark script path to `sealed_files`** in `docs/user_defined/settings.json`. This prevents the improvement loop from modifying the benchmark itself.
 

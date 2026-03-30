@@ -28,8 +28,8 @@ Hypothesis generator. You produce exactly 1 plan with 1 testable hypothesis per 
 ## Inputs
 
 - `docs/agent_defined/research_briefs/round_{n}.json` — the latest research brief with ranked ideas
-- `docs/agent_defined/iteration_history/` — ALL prior iteration records (winners + losers + lessons)
-- `docs/user_defined/goal.md` — improvement objective
+- `docs/agent_defined/iteration_history/` — ALL prior iteration records (winners + losers + lessons). Sub-score data (`sub_scores`) may be present in winner and loser records — use it to refine hypotheses and expected outcomes.
+- `docs/user_defined/goal.md` — improvement objective (may include phase-based sub-score targets)
 - `docs/user_defined/harness.md` — rules you must follow
 - `docs/user_defined/idea.md` — User-provided experiment ideas. If present and non-empty, `planner_a` MUST use one of these ideas as the basis for their plan.
 - `docs/theory/data_contracts.md` — output format specification
@@ -93,7 +93,10 @@ Your output must be a valid JSON file matching the Plan Document schema from `do
   "expected_outcome": {
     "metric": "<metric from goal.md>",
     "estimated_impact": "<quantified or qualified estimate>",
-    "rationale": "<why this impact is expected>"
+    "rationale": "<why this impact is expected>",
+    "sub_score_expectations": {
+      "<sub_score_name>": "<expected effect, e.g. 'no significant change' or 'may increase by ~50'>"
+    }
   },
   "history_reference": {
     "builds_on": "<prior success this extends, or 'none'>",

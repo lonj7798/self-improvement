@@ -63,6 +63,8 @@ Read every file in `docs/agent_defined/iteration_history/`. For each record extr
 
 Build a mental map of: **what has been tried**, **what worked**, **what failed and why**, **what lessons were recorded**. This map directly shapes your research strategy in Step 5.
 
+When reading iteration history, also examine `sub_scores` in winner and loser records (if present). Sub-score trends can reveal dimensions that are improving or degrading even when the primary score is flat. For example, if latency is consistently increasing across winners while accuracy holds, this is a signal to prioritize latency-focused ideas.
+
 If the directory is empty, that is normal — it is the first iteration. Proceed to broad exploration.
 
 ### Step 3 — Check for user-provided ideas
@@ -136,6 +138,8 @@ Compile all candidate ideas. For each idea assign:
   - `medium` — plausible based on repo patterns or single external source
   - `low` — speculative, no direct evidence, exploratory hypothesis
 - `estimated_impact`: human-readable estimate of expected gain (e.g., `"2-4%"`, `"unknown"`, `"<1%"`)
+
+When sub-scores are available from prior iterations, factor sub-score trends into confidence and estimated_impact assessments. An idea that addresses a degrading sub-score should receive higher confidence than one targeting an already-strong dimension.
 
 Sort ideas: `high` confidence first, then `medium`, then `low`. Within each confidence tier, sort by `estimated_impact` descending.
 

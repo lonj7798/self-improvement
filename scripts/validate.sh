@@ -452,6 +452,38 @@ check_result_schema() {
 
         ok "failure_analysis.category '${fa_category}' is valid."
     fi
+
+    # Validate sub_scores field (if present)
+    local has_sub_scores
+    has_sub_scores=$(jq 'has("sub_scores")' "${result_file}" 2>/dev/null || echo "false")
+    if [[ "${has_sub_scores}" == "true" ]]; then
+        local sub_scores_type
+        sub_scores_type=$(jq -r '.sub_scores | type' "${result_file}" 2>/dev/null)
+        if [[ "${sub_scores_type}" == "null" ]]; then
+            ok "sub_scores is null (single-score mode)."
+        elif [[ "${sub_scores_type}" == "object" ]]; then
+            # Verify all values are numbers or null
+            local invalid_values
+            invalid_values=$(jq -r '.sub_scores | to_entries[] | select(.value != null and (.value | type) != "number") | .key' "${result_file}" 2>/dev/null)
+            if [[ -n "${invalid_values}" ]]; then
+                err "sub_scores contains non-numeric values for keys: ${invalid_values}"
+                exit 1
+            fi
+            # Verify all keys are non-empty strings
+            local empty_keys
+            empty_keys=$(jq -r '.sub_scores | keys[] | select(length == 0)' "${result_file}" 2>/dev/null)
+            if [[ -n "${empty_keys}" ]]; then
+                err "sub_scores contains empty string keys"
+                exit 1
+            fi
+            local sub_scores_count
+            sub_scores_count=$(jq '.sub_scores | length' "${result_file}" 2>/dev/null)
+            ok "sub_scores is a valid object (${sub_scores_count} dimension(s))."
+        else
+            err "sub_scores must be an object or null (got ${sub_scores_type})"
+            exit 1
+        fi
+    fi
 }
 
 # ── main ───────────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@
   "si_setting_harness": false,
   "best_score": null,
   "current_milestone": null,
+  "current_phase": null,
   "plateau_consecutive_count": 0,
   "circuit_breaker_count": 0,
   "status": "idle"

@@ -39,7 +39,7 @@ You do not generate code changes. You receive results from executors, evaluate t
 
 ## Inputs
 
-- **Executor result files**: All `result.json` files found under each executor's working directory for the current iteration. Each result.json includes: `executor_id`, `plan_id`, `benchmark_score`, `benchmark_raw`, `status` (success/regression/error/timeout), `failure_analysis`, `timestamp`. See `docs/theory/data_contracts.md` Section 2 for the full schema. Note: `branch_name` is derived from convention (`experiment/round_{n}_executor_{id}` — parse executor_id from result), and `hypothesis` is read from the corresponding plan file (derive path from `plan_id`).
+- **Executor result files**: All `result.json` files found under each executor's working directory for the current iteration. Each result.json includes: `executor_id`, `plan_id`, `benchmark_score`, `benchmark_raw`, `status` (success/regression/error/timeout), `sub_scores` (object or null — additional scoring dimensions), `failure_analysis`, `timestamp`. See `docs/theory/data_contracts.md` Section 2 for the full schema. Note: `branch_name` is derived from convention (`experiment/round_{n}_executor_{id}` — parse executor_id from result), and `hypothesis` is read from the corresponding plan file (derive path from `plan_id`). See `example_merge_report.json` in this agent's directory for the merge report format including `sub_scores`.
 - **Target repository path** (`repo_path`): Absolute path to `want_to_improve/` — all git commands operate here.
 - **`docs/user_defined/settings.json`**: Contains:
   - `benchmark_command`: shell command to run the benchmark
@@ -99,7 +99,7 @@ Take the first candidate from the sorted list as the proposed winner.
 Before touching the improvement branch:
 - Confirm the candidate's `benchmark_score` is strictly better than (or equal to) the current score on `improve/{goal_slug}`.
 - If this check fails, reject this candidate and try the next one (return to Step 4 with the next candidate).
-- Note: sub-metric regression checking is a future enhancement (TODO). Currently only the primary benchmark_score is compared.
+- Note: sub-metric regression checking is a future enhancement. Currently only the primary benchmark_score is compared. Sub-scores from executor results are passed through to the merge report for tracking but do not gate the merge decision.
 
 **Step 6 — Merge the winner**
 ```
@@ -178,6 +178,7 @@ When the loop controller signals that the goal has been reached (target metric a
    - Total improvement: absolute and relative delta.
    - Approach families used (e.g., algorithmic, prompt, config, architecture).
    - Notable experiments that ranked high but were not chosen.
+   - Sub-score trends across iterations (if `sub_scores` data is available in iteration history).
    - Reference to `tracking_history/progress.png` as an image or link.
 6. Return the PR URL in the agent output.
 
@@ -196,7 +197,12 @@ For each iteration, emit a **merge report** (JSON):
     "branch": "experiment/round_3_executor_2",
     "hypothesis": "Cache intermediate results in the hot path",
     "score_before": 142.3,
-    "score_after": 118.7
+    "score_after": 118.7,
+    "sub_scores": {
+      "detailed_score_a": 85.2,
+      "detailed_score_b": 118.7,
+      "detailed_score_c": 256
+    }
   },
   "archived": [
     "archive/round_3_executor_1",

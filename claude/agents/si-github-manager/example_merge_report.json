@@ -1,0 +1,24 @@
+{
+  "iteration": 3,
+  "goal_slug": "reduce_latency",
+  "winner": {
+    "executor_id": "executor_2",
+    "branch": "experiment/round_3_executor_2",
+    "hypothesis": "Cache intermediate results in the hot path",
+    "score_before": 142.3,
+    "score_after": 118.7,
+    "sub_scores": {
+      "detailed_score_a": 85.2,
+      "detailed_score_b": 118.7,
+      "detailed_score_c": 256
+    }
+  },
+  "archived": [
+    "archive/round_3_executor_1",
+    "archive/round_3_executor_3"
+  ],
+  "regressions_detected": false,
+  "re_benchmark_score": 118.7,
+  "status": "merged",
+  "reason": null
+}
