@@ -29,8 +29,11 @@ Each rule has:
 - **enforcement**: Critic checks that no two plans in the same round have identical `approach_family` AND similar `hypothesis`. Similar = same core technique.
 
 ## Custom Rules (user-defined)
-<!-- Add your own rules below. Follow the same format. -->
+<!-- Add your own rules here. They will be enforced. See Example Rules section below for templates. -->
 
+## Example Rules (NOT enforced — templates only)
+
+<!-- EXAMPLE ONLY: This rule is NOT active. Copy to "Custom Rules" section to activate it. -->
 ### H100: (example) No changes to CI/CD
 - **category**: scope_limiting
 - **description**: Don't modify GitHub Actions workflows or CI configuration.

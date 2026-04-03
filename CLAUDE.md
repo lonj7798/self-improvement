@@ -296,7 +296,7 @@ Print:
 [Iteration {N}] 9b: State updated. iterations={i}, best_score={s}, plateau_count={p}, circuit_breaker={c}
 ```
 
-**9c — Update visualization**: append flat entries to `tracking_history/raw_data.json` (one entry per candidate with fields: `iteration`, `plan_id`, `benchmark_score`, `is_winner`, `approach_family`, `sub_scores`). Include `sub_scores` from each executor's `result.json` (object or null). Then run `python3 scripts/plot_progress.py`. This step is mandatory — never skip visualization. Print:
+**9c — Update visualization**: append flat entries to `tracking_history/raw_data.json` (one entry per candidate with fields: `iteration`, `plan_id`, `benchmark_score`, `is_winner`, `approach_family`, `sub_scores`). Include `sub_scores` from each executor's `result.json` (object or null). Then run `python3 scripts/plot_progress.py`. On failure, log warning and continue. Print:
 ```
 [Iteration {N}] 9c: Visualization updated → tracking_history/progress.png
 ```
@@ -479,7 +479,7 @@ All paths must be absolute. `{N}` = current iteration number (`iterations + 1`).
 | All plans rejected by critic | Skip execution. Log which rules were violated. Counter updates happen in Step 9b. |
 | All executors fail | Skip tournament. Record all failures in iteration history. Counter updates happen in Step 9b. |
 | GitHub manager merge fails | Record as no-winner iteration. Do not modify `improve/` branch. |
-| `plot_progress.py` fails | Log warning. Continue — visualization is non-blocking. |
+| `plot_progress.py` fails | Log warning. Continue — visualization failure is **non-blocking** despite Step 9c wording. |
 | Worktree directory already exists | `git -C want_to_improve worktree remove` it and recreate. |
 | Push to fork fails | Log warning. Continue — push is backup, not critical path. |
 | `settings.json` is corrupted | Report the corruption and stop. Do not guess values. |

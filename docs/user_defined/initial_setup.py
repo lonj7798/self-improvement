@@ -115,6 +115,31 @@ def generate_sealed_hashes(user_settings: dict) -> None:
         print("  No sealed files found to hash.")
 
 
+def step0_check_dependencies() -> None:
+    """Check that required external dependencies are available."""
+    print("\n=== Step 0: Dependency Check ===")
+
+    # Check jq
+    result = subprocess.run(["which", "jq"], capture_output=True)
+    if result.returncode != 0:
+        print("ERROR: jq is not installed. Install it with:")
+        print("  macOS: brew install jq")
+        print("  Linux: apt-get install jq")
+        print("Then re-run this script.")
+        sys.exit(1)
+
+    # Check matplotlib
+    try:
+        import matplotlib  # noqa: F401
+    except ImportError:
+        print("ERROR: matplotlib is not installed. Install it with:")
+        print("  pip install matplotlib")
+        print("Then re-run this script.")
+        sys.exit(1)
+
+    print("  All dependencies found.")
+
+
 def step0_claude_setup() -> bool:
     """Verify claude/ source, then copy claude/ → .claude/."""
     import shutil
@@ -551,7 +576,10 @@ def main():
     user_settings = load_json(USER_SETTINGS)
     agent_settings = load_json(AGENT_SETTINGS)
 
-    # Step 0
+    # Step 0: Dependency check (always runs)
+    step0_check_dependencies()
+
+    # Step 0b: Claude setup
     if not user_settings.get("si_claude_setting"):
         if not step0_claude_setup():
             sys.exit(1)
