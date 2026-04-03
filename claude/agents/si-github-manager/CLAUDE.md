@@ -95,6 +95,13 @@ Sort candidates by `benchmark_score`:
 **Step 4 — Select top candidate**
 Take the first candidate from the sorted list as the proposed winner.
 
+**Step 4a — Tie-breaking (when multiple candidates share the top score)**
+
+If two or more candidates share the same `benchmark_score`:
+1. **Prefer fewer lines changed**: run `git -C {repo_path} diff --stat experiment/round_{n}_executor_{id}...improve/{goal_slug}` for each tied candidate. Count total lines added + deleted. The candidate with fewer total lines changed wins.
+2. **If still tied**: prefer the candidate with the lower numeric executor ID (e.g., executor_1 beats executor_2).
+3. Record the tie-breaking method used in the merge report `selection_reason` field (e.g., "tie-broken by diff size: executor_1 had 12 lines vs executor_2 had 18 lines").
+
 **Step 5 — No-regression check (pre-merge)**
 Before touching the improvement branch:
 - Confirm the candidate's `benchmark_score` is strictly better than (or equal to) the current score on `improve/{goal_slug}`.
@@ -133,6 +140,15 @@ Also delete the winner's experiment branch now that it's merged:
 ```
 git -C {repo_path} branch -d experiment/round_{n}_executor_{winner_id}
 ```
+
+**Step 8a — Archive tag pruning (if max_archive_tags is configured)**
+
+If `max_archive_tags` is set to a non-null integer in settings:
+- List all archive tags: `git -C {repo_path} tag -l "archive/*" --sort=creatordate`
+- Count them. If count exceeds `max_archive_tags`, delete the oldest tags (from the front of the sorted list) until count <= `max_archive_tags`.
+- Delete locally: `git -C {repo_path} tag -d {tag_name}`
+- Delete on remote: `git -C {repo_path} push origin :refs/tags/{tag_name}` (log failure but continue)
+- Log how many tags were pruned.
 
 **Step 9 — Produce the merge report**
 Emit a structured merge report (see Outputs section).
@@ -208,6 +224,7 @@ For each iteration, emit a **merge report** (JSON):
     "archive/round_3_executor_1",
     "archive/round_3_executor_3"
   ],
+  "selection_reason": "highest score",
   "regressions_detected": false,
   "re_benchmark_score": 118.7,
   "status": "merged"

@@ -77,7 +77,8 @@ tracking_history/                # Raw benchmark data + progress chart
 
 ## Key Concepts
 
-- **Tournament Selection** — N parallel experiments per iteration, single winner merges. All candidates benchmark against the same baseline commit, so scores are directly comparable. Ties go to the simpler change.
+- **Tournament Selection** — N parallel experiments per iteration, single winner merges. All candidates benchmark against the same baseline commit, so scores are directly comparable. Ties are broken by preferring fewer lines changed, then by lower executor ID.
+- **Archive Tag Management** — Losing experiment branches are tagged as `archive/round_N_executor_id` for traceability. Tags accumulate over time; set `max_archive_tags` in `settings.json` to enable automatic pruning of the oldest tags.
 - **Institutional Memory** — every result (win or lose) is recorded with structured failure analysis. Planners must read the full history before proposing new hypotheses, preventing the system from rediscovering dead ends.
 - **One Hypothesis Per Plan** — each plan tests exactly one idea. If the benchmark improves, you know why. If it regresses, you know what to revert. Multi-hypothesis plans are rejected by the critic.
 - **Approach Family Taxonomy** — every plan is tagged with a category (architecture, training_config, data, optimization, etc.). The system tracks which families are working and prevents overexploitation of a single family (max 3 consecutive wins from the same family).

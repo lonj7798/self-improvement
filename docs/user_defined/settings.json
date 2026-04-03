@@ -16,5 +16,6 @@
   "primary_metric": "primary",
   "sealed_files": [],
   "regression_threshold": 0.05,
-  "circuit_breaker_threshold": 3
+  "circuit_breaker_threshold": 3,
+  "max_archive_tags": null
 }
