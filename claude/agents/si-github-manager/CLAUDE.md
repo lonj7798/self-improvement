@@ -49,7 +49,7 @@ You do not generate code changes. You receive results from executors, evaluate t
   - `fork_url`: URL of the fork (push target). If same as `upstream_url`, operates in same-repo mode.
   - `upstream_url`: URL of the original repository (PR target).
 - **Current iteration number**: Integer `n` identifying this round.
-- **Goal slug**: Short identifier for the improvement goal, e.g., `reduce_latency` or `improve_accuracy`. Used in branch and PR naming.
+- **Goal slug**: Read `goal_slug` from `project_root/docs/agent_defined/settings.json`. Do not re-derive the slug from goal.md. It is canonicalized during setup. Used in branch and PR naming.
 - **Baseline score**: The benchmark score recorded before any improvements began (stored in `tracking_history/baseline.json`).
 
 ---

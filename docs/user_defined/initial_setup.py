@@ -5,6 +5,7 @@ Run this before starting the orchestrator to configure all required settings."""
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,30 @@ REQUIRED_FILES = [
     "claude/skills/si-goal-clarifier/SKILL.md",
     "claude/skills/si-benchmark-builder/SKILL.md",
 ]
+
+
+def derive_goal_slug(objective_text: str) -> str:
+    """Derive a canonical goal slug from the objective text.
+
+    Takes the first non-empty, non-comment line, lowercases it, replaces
+    non-alphanumeric characters with underscores, collapses runs of
+    underscores, strips leading/trailing underscores, and truncates to 40
+    characters.
+    """
+    for line in objective_text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and not stripped.startswith("<!--"):
+            first_line = stripped
+            break
+    else:
+        return "unnamed_goal"
+
+    slug = first_line.lower()
+    slug = re.sub(r"[^a-z0-9]", "_", slug)
+    slug = re.sub(r"_+", "_", slug)
+    slug = slug.strip("_")
+    slug = slug[:40]
+    return slug or "unnamed_goal"
 
 
 def load_json(path: Path) -> dict:
@@ -382,6 +407,11 @@ def step2_goal(agent_settings: dict) -> bool:
             pass
     save_json(USER_SETTINGS, user_settings)
 
+    # Canonicalize and persist goal_slug
+    goal_slug = derive_goal_slug(objective)
+    agent_settings["goal_slug"] = goal_slug
+    print(f"Goal slug: {goal_slug}")
+
     agent_settings["si_setting_goal"] = True
     save_json(AGENT_SETTINGS, agent_settings)
     print("Goal configured.")
@@ -439,8 +469,10 @@ def step3_benchmark(user_settings: dict, agent_settings: dict) -> bool:
             # Record baseline
             from datetime import datetime, timezone
             baseline = {
-                "baseline_score": score,
-                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "score": score,
+                "benchmark_raw": result.stdout.strip(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "benchmark_command": cmd,
             }
             BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
             save_json(BASELINE_FILE, baseline)
