@@ -102,7 +102,8 @@ Before entering the loop, validate the configuration and print the full starting
 - Verify `number_of_agents` > 0.
 - Verify `primary_metric` is a non-empty string.
 - Verify `benchmark_direction` is one of `"higher_is_better"` or `"lower_is_better"`.
-- Verify fork remotes: run `git -C want_to_improve remote -v` and confirm `origin` and `upstream` exist.
+- Verify `want_to_improve/` directory exists. If not, exit with `status: "configuration_error"` and message: "want_to_improve/ directory not found. Clone your target repository there first."
+- Verify `want_to_improve/` is a git repository with both `origin` and `upstream` remotes configured: run `git -C want_to_improve remote -v` and confirm both exist. If either is missing, exit with `status: "configuration_error"` and a message listing which remotes are missing.
 - Verify `tracking_history/baseline.json` exists. If missing, run the benchmark command once to establish it and write it to the file with schema `{"score": <number>, "benchmark_raw": "<raw output>", "timestamp": "<ISO 8601 UTC>", "benchmark_command": "<command>"}` before continuing.
 - If `best_score` is null, note that the first iteration will establish the baseline (no regression check possible on iteration 1).
 
@@ -119,6 +120,8 @@ Agents: {number_of_agents}
 Max iterations: {max_iterations}
 Fork: {fork_url or "same-repo mode"}
 Upstream: {upstream_url}
+Repository: want_to_improve/ (verified)
+Remotes: origin={origin_url}, upstream={upstream_url}
 Completed iterations: {iterations}
 Status: running
 ```

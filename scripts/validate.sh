@@ -73,6 +73,54 @@ load_custom_families() {
     fi
 }
 
+# ── check: benchmark command safety ───────────────────────────────────────────
+
+check_benchmark_command_safety() {
+    require_jq
+
+    if [[ ! -f "${SETTINGS}" ]]; then
+        return 0
+    fi
+
+    local benchmark_command
+    benchmark_command=$(jq -r '.benchmark_command // ""' "${SETTINGS}" 2>/dev/null)
+
+    if [[ -z "${benchmark_command}" ]]; then
+        return 0
+    fi
+
+    local dangerous_chars='; | & ` $( > <'
+    local found_chars=""
+
+    if [[ "${benchmark_command}" == *";"* ]]; then
+        found_chars="${found_chars} ;"
+    fi
+    if [[ "${benchmark_command}" == *"|"* ]]; then
+        found_chars="${found_chars} |"
+    fi
+    if [[ "${benchmark_command}" == *"&"* ]]; then
+        found_chars="${found_chars} &"
+    fi
+    if [[ "${benchmark_command}" == *'`'* ]]; then
+        found_chars="${found_chars} \`"
+    fi
+    if [[ "${benchmark_command}" == *'$('* ]]; then
+        found_chars="${found_chars} \$("
+    fi
+    if [[ "${benchmark_command}" == *">"* ]]; then
+        found_chars="${found_chars} >"
+    fi
+    if [[ "${benchmark_command}" == *"<"* ]]; then
+        found_chars="${found_chars} <"
+    fi
+
+    if [[ -n "${found_chars}" ]]; then
+        echo "WARNING: benchmark_command contains shell metacharacters:${found_chars}"
+        echo "  Command: ${benchmark_command}"
+        echo "  Please ensure this command is trusted before running the improvement loop."
+    fi
+}
+
 # ── check a: sealed file check ─────────────────────────────────────────────────
 
 check_sealed_files() {
@@ -167,9 +215,19 @@ check_sealed_files() {
 
 check_sealed_hashes() {
     if [[ ! -f "${SEALED_HASHES_FILE}" ]]; then
-        echo "Warning: .sealed_hashes manifest not found — skipping hash verification."
-        echo "  Run initial_setup.py step 4 to generate the manifest."
-        return 0
+        # Check if sealed_files is configured and non-empty
+        local has_sealed_files
+        has_sealed_files=$(jq -r 'if (.sealed_files | type) == "array" and (.sealed_files | length) > 0 then "yes" else "no" end' "${SETTINGS}" 2>/dev/null || echo "no")
+        if [[ "${has_sealed_files}" == "yes" ]]; then
+            err ".sealed_hashes manifest not found but sealed_files is configured."
+            err "  Hash verification is required when sealed_files is non-empty."
+            err "  Run initial_setup.py step 4 to generate the manifest."
+            exit 1
+        else
+            echo "Warning: .sealed_hashes manifest not found — skipping hash verification."
+            echo "  Run initial_setup.py step 4 to generate the manifest."
+            return 0
+        fi
     fi
 
     if ! command -v shasum &>/dev/null && ! command -v sha256sum &>/dev/null; then
@@ -493,6 +551,9 @@ main() {
 
     # Load custom approach families from harness
     load_custom_families
+
+    # Check benchmark command for dangerous metacharacters
+    check_benchmark_command_safety
 
     # Always run the sealed file check
     check_sealed_files
