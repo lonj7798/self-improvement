@@ -103,6 +103,7 @@ Before entering the loop, validate the configuration and print the full starting
 - Verify `primary_metric` is a non-empty string.
 - Verify `benchmark_direction` is one of `"higher_is_better"` or `"lower_is_better"`.
 - Verify fork remotes: run `git -C want_to_improve remote -v` and confirm `origin` and `upstream` exist.
+- Verify `tracking_history/baseline.json` exists. If missing, run the benchmark command once to establish it and write it to the file with schema `{"score": <number>, "benchmark_raw": "<raw output>", "timestamp": "<ISO 8601 UTC>", "benchmark_command": "<command>"}` before continuing.
 - If `best_score` is null, note that the first iteration will establish the baseline (no regression check possible on iteration 1).
 
 If any critical validation fails, update `docs/agent_defined/settings.json` with `status: "configuration_error"` and stop.
@@ -466,7 +467,7 @@ Exact argument strings to pass when spawning each agent:
 | `si-executor` | `plan_path={abs_path_to_plan_json} worktree_dir={abs_path_to_project}/want_to_improve/worktrees/round_{N}_executor_{id} executor_id={executor_N} project_root={abs_path_to_project}` |
 | `si-github-manager` | `iteration={N} goal_slug={slug} result_paths={comma_separated_abs_paths_to_result_json} project_root={abs_path_to_project} repo_path={abs_path_to_project}/want_to_improve` |
 
-All paths must be absolute. `{N}` = current iteration number (`iterations + 1`). `{slug}` = goal slug derived from `goal.md` objective (lowercase, underscored).
+All paths must be absolute. `{N}` = current iteration number (`iterations + 1`). `{slug}` = read `goal_slug` from `docs/agent_defined/settings.json` — do NOT re-derive it. The slug is canonicalized during setup by `derive_goal_slug()` in `docs/user_defined/initial_setup.py`.
 
 ---
 
