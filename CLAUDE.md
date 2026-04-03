@@ -102,7 +102,8 @@ Before entering the loop, validate the configuration and print the full starting
 - Verify `number_of_agents` > 0.
 - Verify `primary_metric` is a non-empty string.
 - Verify `benchmark_direction` is one of `"higher_is_better"` or `"lower_is_better"`.
-- Verify fork remotes: run `git -C want_to_improve remote -v` and confirm `origin` and `upstream` exist.
+- Verify `want_to_improve/` directory exists. If not, exit with `status: "configuration_error"` and message: "want_to_improve/ directory not found. Clone your target repository there first."
+- Verify `want_to_improve/` is a git repository with `origin` and `upstream` remotes: run `git -C want_to_improve remote -v` and confirm both exist. If missing, exit with `status: "configuration_error"` and a message explaining which remotes are missing.
 - If `best_score` is null, note that the first iteration will establish the baseline (no regression check possible on iteration 1).
 
 If any critical validation fails, update `docs/agent_defined/settings.json` with `status: "configuration_error"` and stop.
@@ -116,8 +117,10 @@ Target: {target_value or "none (open-ended)"}
 Baseline: {best_score or "not yet established"}
 Agents: {number_of_agents}
 Max iterations: {max_iterations}
+Repository: want_to_improve/ ({verified|missing})
 Fork: {fork_url or "same-repo mode"}
 Upstream: {upstream_url}
+Remotes: origin={origin_url}, upstream={upstream_url}
 Completed iterations: {iterations}
 Status: running
 ```
