@@ -69,6 +69,16 @@ You are a fresh teammate each round. You have no accumulated context. You are th
 4. Write the updated `notebook.json` back to `notebook_path`.
 5. If `notebook.json` does not exist yet, create it with an empty `observations` array.
 
+### Compaction Recovery (continuation planner only)
+
+The orchestrator may send a `flush_notebook` directive between rounds when Claude Code's context was compacted while you were alive. Your accumulated in-memory notebook observations, theory updates, and working context must be persisted back to disk before they are lost.
+
+On receiving `{ "type": "flush_notebook", "request_id": "<uuid>" }`:
+
+1. Immediately write your current in-context notebook state (current_theory, all observations accumulated since the last disk-backed read, any pending dead_ends or streak info) to `notebook.json` at `notebook_path`. Merge, do not overwrite — preserve any entries already on disk that you do not have in context.
+2. Reply with `{ "type": "flush_notebook_ack", "request_id": "<same uuid>", "notebook_path": "<abs path to notebook.json>" }` so the orchestrator can clear `iteration_state.compaction_pending` and proceed.
+3. Do not produce a plan in response to this directive — it is a persistence-only message. Wait for the next round's normal planning message before drafting a plan.
+
 ---
 
 ## Workflow

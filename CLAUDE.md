@@ -29,6 +29,7 @@ All teammate operations go through the `/si-team-manager` skill:
 - Winner handoff: `/si-team-manager handoff winner_id=<id> round=<N> score_before=<f> score_after=<f>`
 - Listing active: `/si-team-manager list`
 - Notebook ops: `/si-team-manager notebook action=<read|archive>`
+- Flushing continuation notebook: `/si-team-manager flush-notebook id=<teammate_id>` (the continuation planner persists its accumulated in-context notebook state to `notebook.json` and acks)
 
 **NEVER** call TeamCreate, TeamDelete, or SendMessage directly.
 **NEVER** write to `docs/agent_defined/teammate_registry.json` directly.
@@ -151,6 +152,8 @@ Status: running
 ```
 [Iteration {N}] Checking for user ideas...
 ```
+
+**Compaction recovery**: If `iteration_state.compaction_pending == true`, the PreCompact hook flagged that a continuation planner was alive when Claude Code's context was compacted — its accumulated in-memory notebook state is at risk of being lost. Before anything else this round, send the continuation planner a `flush_notebook` directive via `/si-team-manager flush-notebook id=<continuation_teammate_id>` and wait for its acknowledgement (the planner writes its accumulated context back to `notebook.json`). After the ack, clear the flag by setting `iteration_state.compaction_pending = false` via `writeIterationState`. If there is no continuation planner currently alive (e.g., this is a bootstrap round or the registry shows no active continuation), just clear the flag — no directive needed. Only then proceed with the rest of Step 5.
 
 Read `docs/user_defined/idea.md`. If the file contains ideas (not just the template comment), perform an **atomic snapshot-rename** so the live file is rotated out of the way before researchers and planners run: ensure the destination directory exists, then rename the file and recreate an empty template in its place.
 
