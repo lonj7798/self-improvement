@@ -83,7 +83,10 @@ On receiving `{ "type": "flush_notebook", "request_id": "<uuid>" }`:
 
 ## Workflow
 
-1. Read ALL iteration history (winners AND losers with lessons learned). Do not skip losers — they are as important as winners.
+1. Read iteration history efficiently:
+   - **First**: read `docs/agent_defined/history_digest.md` if it exists — this is a compact rolling summary of ALL prior iterations maintained by the orchestrator. It contains winners, losers, lessons, approach families, and score trends in ~1/10th the tokens of reading individual files.
+   - **Then**: read only the LAST 3 individual round files from `docs/agent_defined/iteration_history/` for full detail on recent attempts.
+   - **Only if `history_digest.md` does not exist**: fall back to reading ALL iteration history files (winners AND losers with lessons learned). Do not skip losers — they are as important as winners.
 2. Read the latest research brief (ideas + evidence). Note the ranked order of ideas.
 3. Read harness rules in full. Understand every constraint before you start planning.
 4. Pick ONE idea to pursue.

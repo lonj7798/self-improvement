@@ -45,3 +45,18 @@
 1.
 2.
 3.
+
+---
+
+## Goals (optional — multi-goal mode)
+<!-- Define multiple goals to pursue sequentially. Each goal has its own benchmark, target, and improvement branch. -->
+<!-- If this section is empty or absent, the system uses the single-goal format above. -->
+<!-- Goals are processed in priority order (1 = highest). -->
+
+<!--
+| ID | Priority | Objective | Metric | Target | Direction | Benchmark Command | Scope |
+|----|----------|-----------|--------|--------|-----------|-------------------|-------|
+| goal-1 | 1 | | | | higher_is_better | | |
+| goal-2 | 2 | | | | higher_is_better | | |
+| goal-3 | 3 | | | | lower_is_better | | |
+-->
