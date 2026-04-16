@@ -576,13 +576,19 @@ When the loop exits:
 |---|---|---|---|---|
 | Step 2 — Goal | `/si-goal-clarifier` | Skill | `skills/si-goal-clarifier/` | 1 (interactive, only if goal unclear) |
 | Step 3 — Benchmark | `/si-benchmark-builder` | Skill | `skills/si-benchmark-builder/` | 1 (interactive, only if no benchmark) |
-| Step 6 — Research | `si-researcher` | Agent | `agents/si-researcher/` | 1 (sequential) |
-| Step 7a — Planning | `si-planner` | Agent | `agents/si-planner/` | N in parallel |
+| Step 6 — Research | `si-researcher (mode=repo)` | Agent | `agents/si-researcher/` | 3 in parallel |
+| Step 6 — Research | `si-researcher (mode=external)` | Agent | `agents/si-researcher/` | (parallel) |
+| Step 6 — Research | `si-researcher (mode=failure)` | Agent | `agents/si-researcher/` | (parallel) |
+| Step 7a — Planning | `si-planner (continuation)` | Teammate | `agents/si-planner/` | via SendMessage |
+| Step 7a — Planning | `si-planner (challenger)` | Teammate | `agents/si-planner/` | 2 in parallel |
 | Step 7a (sub) — Plan creation | `si-plan-creator` | Sub-skill | `agents/si-planner/skills/si-plan-creator/` | (internal to planner) |
 | Step 7a (sub) — Architecture | `si-plan-architect` | Sub-skill | `agents/si-planner/skills/si-plan-architect/` | (internal to planner) |
+| Step 7a½ — Hybrid | `si-planner (hybrid)` | Subagent | `agents/si-planner/` | 0-1 (optional) |
 | Step 7b — Critic | `si-plan-critic` | Sub-skill | `agents/si-planner/skills/si-plan-critic/` | N (can be parallel) |
+| Step 7c — De-risk | `si-executor (de-risk)` | Subagent | `agents/si-executor/` | N in parallel |
 | Step 8 — Execution | `si-executor` | Agent | `agents/si-executor/` | N in parallel |
 | Step 8a — Tournament | `si-github-manager` | Agent | `agents/si-github-manager/` | 1 (sequential) |
+| Teammate mgmt | `/si-team-manager` | Skill | `skills/si-team-manager/` | on demand |
 
 Where N = `number_of_agents` from `docs/user_defined/settings.json`.
 
@@ -592,8 +598,8 @@ Exact argument strings to pass when spawning each agent:
 
 | Agent | Arguments |
 |---|---|
-| `si-researcher` | `iteration={N} repo_path={abs_path_to_want_to_improve} project_root={abs_path_to_project}` |
-| `si-planner` | `iteration={N} planner_id={planner_a\|planner_b\|...} project_root={abs_path_to_project}` |
+| `si-researcher` | `iteration={N} repo_path={abs_path_to_want_to_improve} project_root={abs_path_to_project} mode={repo|external|failure}` |
+| `si-planner` | `iteration={N} planner_id={id} project_root={abs_path_to_project} role={continuation|challenger} brief_paths={paths} notebook_path={path}` |
 | `si-plan-critic` | `plan_path={abs_path_to_plan_json} harness_path={abs_path_to_harness_md} history_path={abs_path_to_iteration_history_dir}` |
 | `si-executor` | `plan_path={abs_path_to_plan_json} worktree_dir={abs_path_to_project}/want_to_improve/worktrees/round_{N}_executor_{id} executor_id={executor_N} project_root={abs_path_to_project}` |
 | `si-github-manager` | `iteration={N} goal_slug={slug} result_paths={comma_separated_abs_paths_to_result_json} project_root={abs_path_to_project} repo_path={abs_path_to_project}/want_to_improve` |
