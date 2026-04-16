@@ -8,5 +8,21 @@
   "current_phase": null,
   "plateau_consecutive_count": 0,
   "circuit_breaker_count": 0,
-  "status": "idle"
+  "status": "idle",
+  "continuation": {
+    "planner_id": null,
+    "streak": 0,
+    "notebook_path": null
+  },
+  "retrospection_state": {
+    "last_round": null,
+    "reshaped": false,
+    "reshape_trigger_round": null
+  },
+  "recent_winners": [],
+  "hybrid_stats": {
+    "total": 0,
+    "wins": 0,
+    "skips": 0
+  }
 }

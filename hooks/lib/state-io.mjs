@@ -63,8 +63,18 @@ export function writeIterationState(projectRoot, updates) {
   writeJSON(fp, deepMerge(readIterationState(projectRoot), updates));
 }
 
+function agentSettingsDefaults() {
+  return {
+    continuation: { planner_id: null, streak: 0, notebook_path: null },
+    retrospection_state: { last_round: null, reshaped: false, reshape_trigger_round: null },
+    recent_winners: [],
+    hybrid_stats: { total: 0, wins: 0, skips: 0 },
+  };
+}
+
 export function readAgentSettings(projectRoot) {
-  return readJSON(path.join(projectRoot, 'docs', 'agent_defined', 'settings.json')) ?? {};
+  const fp = path.join(projectRoot, 'docs', 'agent_defined', 'settings.json');
+  return deepMerge(agentSettingsDefaults(), readJSON(fp) ?? {});
 }
 
 export function writeAgentSettings(projectRoot, updates) {
@@ -76,7 +86,8 @@ export function readUserSettings(projectRoot) {
   return readJSON(path.join(projectRoot, 'docs', 'user_defined', 'settings.json')) ?? {};
 }
 
-// [field, expectedType | null]  null = present-only check (any type including null)
+// [field, expectedType | null, optional?]  null = present-only check (any type including null)
+// optional=true: field absence is not an error; but if present, type must match
 const SCHEMAS = {
   iteration_state: [
     ['iteration','number'],['status','string'],['current_step',null],['started_at',null],
@@ -88,6 +99,8 @@ const SCHEMAS = {
     ['si_setting_harness',null],['best_score',null],['current_milestone',null],
     ['current_phase',null],['plateau_consecutive_count','number'],
     ['circuit_breaker_count','number'],['status','string'],
+    ['continuation','object',true],['retrospection_state','object',true],
+    ['recent_winners','array',true],['hybrid_stats','object',true],
   ],
   user_settings: [
     ['si_claude_setting',null],['number_of_agents','number'],['number_of_max_critics','number'],
@@ -108,8 +121,11 @@ export function validateSchema(schemaName, data) {
   const fields = SCHEMAS[schemaName];
   if (!fields) return { valid: false, errors: [`Unknown schema: ${schemaName}`] };
   const errors = [];
-  for (const [field, type] of fields) {
-    if (!(field in data)) { errors.push(`Missing required field: ${field}`); continue; }
+  for (const [field, type, optional] of fields) {
+    if (!(field in data)) {
+      if (!optional) errors.push(`Missing required field: ${field}`);
+      continue;
+    }
     if (type === 'array' && !Array.isArray(data[field]))
       errors.push(`Field "${field}" must be an array`);
     else if (type && type !== 'array' && typeof data[field] !== type)
