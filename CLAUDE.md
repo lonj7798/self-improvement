@@ -196,19 +196,46 @@ On failure: `research.status: "failed"`. Print:
 [Iteration {N}] Research failed: {error}. Proceeding with history only.
 ```
 
-### Step 7a — Planning → Agent: `si-planner` (uses sub-skills: `si-plan-creator`, `si-plan-architect`)
+### Step 7a — Planning (3 planners as teammates, parallel)
 
-**Before**: Re-read `docs/user_defined/settings.json` for latest `number_of_agents`. Update `iteration_state.json`: `current_step: "planning"`, `planning.status: "in_progress"`, `updated_at: <now>`. Print:
+**Before**: Re-read `docs/user_defined/settings.json` for latest config. Update `iteration_state.json`: `current_step: "planning"`, `planning.status: "in_progress"`, `updated_at: <now>`. Print:
 ```
-[Iteration {N}] Spawning {N_agents} planners in parallel...
+[Iteration {N}] Spawning planners (teammates) in parallel...
 ```
 
-Spawn **N planner agents** in parallel (Invoke /si-planner), where N = `number_of_agents` from user settings.
+**Bootstrap (Round 1 or after force rotation — no continuation planner exists):**
 
-Each planner receives:
-- A unique `planner_id`: `planner_a`, `planner_b`, `planner_c`, ... (alphabetical)
-- The current iteration number
-- The research brief path
+Create 3 fresh challenger teammates (EXPLORE mode — no accumulated context):
+```
+/si-team-manager create role=challenger label=planner_a round={N}
+/si-team-manager create role=challenger label=planner_b round={N}
+/si-team-manager create role=challenger label=planner_c round={N}
+```
+Send each a message with a research brief:
+- planner_a: `brief_paths=brief_repo.json,brief_ext.json`
+- planner_b: `brief_paths=brief_fail.json,brief_ext.json`
+- planner_c: `brief_paths=brief_repo.json,brief_fail.json`
+
+**Steady state (continuation planner exists in registry):**
+
+Three planners run in parallel:
+
+1. **Continuation planner** (EXPLOIT mode — deepens the winning approach):
+   - Already alive. Send a message (via `/si-team-manager`) with:
+     - Win/loss feedback from previous round
+     - User ideas from `idea.md` (if available — inject into this planner ONLY)
+     - NO research briefs (relies on accumulated context + notebook)
+   - Arguments: `role=continuation notebook_path=docs/agent_defined/notebook.json`
+
+2. **Challenger B** (EXPLORE mode — fresh angle from repo + external research):
+   - Create: `/si-team-manager create role=challenger label=planner_b round={N}`
+   - Send message with: `brief_paths=brief_repo.json,brief_ext.json`
+   - Arguments: `role=challenger brief_paths={paths}`
+
+3. **Challenger C** (EXPLORE mode — fresh angle from failure analysis):
+   - Create: `/si-team-manager create role=challenger label=planner_c round={N}`
+   - Send message with: `brief_paths=brief_fail.json,brief_ext.json`
+   - Arguments: `role=challenger brief_paths={paths}`
 
 Collect plan files from `docs/plans/round_{n}/plan_planner_{id}.json`.
 
