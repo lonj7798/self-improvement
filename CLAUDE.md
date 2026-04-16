@@ -152,11 +152,19 @@ Status: running
 [Iteration {N}] Checking for user ideas...
 ```
 
-Read `docs/user_defined/idea.md`. Snapshot the contents immediately — do NOT clear the file yet (planners need it in Step 7a).
+Read `docs/user_defined/idea.md`. If the file contains ideas (not just the template comment), perform an **atomic snapshot-rename** so the live file is rotated out of the way before researchers and planners run: ensure the destination directory exists, then rename the file and recreate an empty template in its place.
+
+```
+mkdir -p docs/agent_defined/idea_snapshots
+mv docs/user_defined/idea.md docs/agent_defined/idea_snapshots/round_{N}.md
+```
+
+Immediately recreate an empty `docs/user_defined/idea.md` with the template comment header. The snapshot file at `docs/agent_defined/idea_snapshots/round_{N}.md` is the **source of truth** for this iteration's planners. Any new ideas the user appends to `idea.md` during Steps 6-7a land in the fresh empty file and are picked up by the NEXT iteration's Step 5 — closing the previous lost-update window between snapshot and clear.
+
 - If the file contains ideas (not just the template comment), treat them as **highest-priority input** for this iteration's planners.
 - `planner_a` MUST use a user idea if one is available. Other planners may use user ideas or research brief ideas.
 - Log consumed user ideas in the iteration history record with `source: "user_idea"`.
-- **Do NOT clear `idea.md` here.** Clearing happens in Step 7a After block, after planners have read the ideas.
+- If `idea.md` is empty or template-only, skip the rename (no snapshot file is created for this round).
 
 **After**: Update `iteration_state.json`: `user_ideas_consumed: [list]`. Print:
 ```
@@ -223,9 +231,9 @@ Three planners run in parallel:
 1. **Continuation planner** (EXPLOIT mode — deepens the winning approach):
    - Already alive. Send a message (via `/si-team-manager`) with:
      - Win/loss feedback from previous round
-     - User ideas from `idea.md` (if available — inject into this planner ONLY)
+     - User ideas from this round's snapshot at `docs/agent_defined/idea_snapshots/round_{N}.md` (if the snapshot file exists — inject into this planner ONLY). Pass the absolute path as `snapshot_path=docs/agent_defined/idea_snapshots/round_{N}.md`.
      - NO research briefs (relies on accumulated context + notebook)
-   - Arguments: `role=continuation notebook_path=docs/agent_defined/notebook.json`
+   - Arguments: `role=continuation notebook_path=docs/agent_defined/notebook.json snapshot_path=docs/agent_defined/idea_snapshots/round_{N}.md`
 
 2. **Challenger B** (EXPLORE mode — fresh angle from repo + external research):
    - Create: `/si-team-manager create role=challenger label=planner_b round={N}`
@@ -239,7 +247,7 @@ Three planners run in parallel:
 
 Collect plan files from `docs/plans/round_{n}/plan_planner_{id}.json`.
 
-**After**: Update `iteration_state.json`: for each planner, set `planning.plans.{planner_id}.status: "completed"`, `planning.plans.{planner_id}.output_path: <path>`. If user ideas were consumed this iteration, **clear `idea.md`** back to its empty template now (planners have already read the ideas). Print:
+**After**: Update `iteration_state.json`: for each planner, set `planning.plans.{planner_id}.status: "completed"`, `planning.plans.{planner_id}.output_path: <path>`. (No idea.md rotation step here — Step 5 already performed the atomic snapshot-rename, so the live `idea.md` is already empty and ready to receive the user's next round of input.) Print:
 ```
 [Iteration {N}] Planning complete. Plans:
   - planner_a: "{hypothesis}" (family: {approach_family})
@@ -272,18 +280,24 @@ If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected
 
 **Before**: Read `hybrid_planner` settings. If `hybrid_planner.enabled` is `false` or not set, skip this step entirely.
 
-If `hybrid_planner.enabled` is `true` in settings, spawn a hybrid planner subagent that sees ALL plans from Step 7a plus all 3 research briefs.
+If `hybrid_planner.enabled` is `true` in settings, spawn a hybrid planner subagent that sees ALL plans from Step 7a plus all 3 research briefs. The hybrid plan file must set `planner_id: "hybrid"` so the critic's H005 hybrid redundancy check fires in the next sub-step.
 
 The hybrid planner may: COMBINE (merge complementary ideas), REFINE (strengthen one plan with others' insights), CONTRAST (resolve tension between plans), or SKIP (all plans already strong and diverse).
 
-If SKIP: proceed with the 3 original plans only.
-If a hybrid plan is produced: it goes through the same critic review (Step 7b) and must pass H001-H005 including the H005 hybrid redundancy check. The hybrid plan competes equally in the tournament.
+If SKIP: proceed with the 3 original plans only. No critic call is needed for the SKIP branch.
+
+If a hybrid plan is produced, run an **explicit critic pass on the hybrid plan** before it joins the tournament:
+
+1. Spawn a single `si-plan-critic` invocation (Invoke /si-plan-critic) on the hybrid plan file, using the same skill as Step 7b. Because the hybrid plan has `planner_id=hybrid`, the critic evaluates H001–H005 including the H005 hybrid redundancy check against `hybrid_metadata.source_plans`.
+2. Record the result in `iteration_state.json` under `hybrid.critic_approved: true|false` alongside the existing `hybrid` fields.
+3. If the critic **rejects** the hybrid plan (`critic_approved: false`): drop the hybrid plan and proceed to Step 7c with the original 3 plans only. Log the rejection reason in `findings/` for Researcher-Fail.
+4. If the critic **approves** the hybrid plan (`critic_approved: true`): the hybrid plan joins the approved set and competes on equal footing in Step 7c (de-risk) and Step 8 (execution).
 
 If `hybrid_planner.enabled` is `false` or not set: skip this step entirely.
 
-**After**: Update `iteration_state.json` hybrid section. Update `hybrid_stats` in `docs/agent_defined/settings.json`. Print:
+**After**: Update `iteration_state.json` hybrid section, including `hybrid.critic_approved` (only when a hybrid plan was produced; remains `null` on SKIP). Update `hybrid_stats` in `docs/agent_defined/settings.json`. Print:
 ```
-[Iteration {N}] Hybrid planner: {SKIP|plan produced} ({reason}).
+[Iteration {N}] Hybrid planner: {SKIP|plan produced} ({reason}). Critic: {APPROVED|REJECTED|n/a}.
 ```
 
 ### Step 7c — De-Risk (if de_risk.enabled)

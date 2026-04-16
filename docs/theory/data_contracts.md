@@ -754,12 +754,15 @@ In-memory dispatch object. Not persisted to disk; effects are reflected in setti
 
 Extension field added to the standard plan document by the hybrid planner. Required on hybrid plans; absent on all others. Rejected by critic if >  `redundancy_threshold_pct`% similar to any single source plan.
 
+Hybrid plans are also tracked in `iteration_state.hybrid` with a `critic_approved` flag, set by the explicit critic pass in Step 7a½. This mirrors the per-plan `critic_approved` flag on standard plans (see [Plan Document](#1-plan-document)) and gates whether the hybrid plan enters Step 7c (de-risk) and Step 8 (execution).
+
 | Field | Type | Description |
 |---|---|---|
 | `hybrid_metadata` | object or null | `null` on non-hybrid plans. |
 | `hybrid_metadata.source_plans` | array of strings | `plan_id` values synthesized from. Minimum 2 entries. |
 | `hybrid_metadata.synthesis_strategy` | string | One of: `combine` (compound related areas), `refine` (rewrite execution with cross-plan insight), `contrast` (resolve a tension). |
 | `hybrid_metadata.rationale` | string | Why this synthesis is stronger than any individual source plan. |
+| `iteration_state.hybrid.critic_approved` | boolean or null | Set by the critic pass in Step 7a½. `true` if the hybrid plan passed H001–H005 (including H005 hybrid redundancy), `false` if rejected, `null` when the hybrid planner emitted SKIP or is disabled. |
 
 ```json
 {
