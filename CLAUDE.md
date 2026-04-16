@@ -461,6 +461,26 @@ Print:
   Plateau count: {p}/{plateau_window}. Circuit breaker: {c}/{circuit_breaker_threshold}.
 ```
 
+### Step 9½ — Retrospection (if retrospection.enabled)
+
+**Before**: Read `retrospection` settings. If `retrospection.enabled` is `false` or not set, skip this step entirely. Only runs every `retrospection.interval` iterations, or on no-winner rounds.
+
+Analyze recent iteration history for signals:
+
+| Signal | Trigger | Action |
+|--------|---------|--------|
+| PLATEAU | Improvement < threshold for `plateau_window` rounds | Force-rotate continuation planner, elevate Researcher-Fail, inject "try different family" directive. Set `reshaped=true`. |
+| HIGH_FAILURE_RATE | >50% plans rejected or failed (`failure_rate_threshold_pct`) | Log findings for next round's planners; optionally spawn meta-researcher to analyze WHY plans are failing |
+| FAMILY_CONCENTRATION | Same family won 2+ of last `family_concentration_window` rounds | Next round's challengers forbidden from that family; Researcher-Ext directed to search outside that family |
+| NEAR_MISS | A loser scored within `near_miss_threshold_pct` of winner | Promote near-miss approach as research seed for one challenger next round |
+
+If `retrospection.enabled` is `false` or not set: skip this step entirely.
+
+**After**: Update `iteration_state.json` retrospection section. Write `retrospection_state` to `docs/agent_defined/settings.json`. Print:
+```
+[Iteration {N}] 9½: Retrospection complete. Signals detected: {list or "none"}.
+```
+
 ### Step 10 — Stop Condition Check
 
 **Before**: Update `iteration_state.json`: `current_step: "stop_check"`, `updated_at: <now>`. Re-read `docs/agent_defined/settings.json` for latest counters.
@@ -471,7 +491,7 @@ Evaluate ALL conditions. If ANY is true, exit the loop:
 |---|---|---|
 | **User stop requested** | `status == "stop_requested"` in `docs/agent_defined/settings.json` | Exit with `status: "user_stopped"` |
 | **Target reached** | `best_score` meets or exceeds `target_value` (respecting `benchmark_direction`). If `target_value` is `null`, skip this condition. | Exit with `status: "target_reached"` |
-| **Plateau** | `plateau_consecutive_count` >= `plateau_window` | Exit with `status: "plateau"` |
+| **Plateau** | `plateau_consecutive_count` >= `plateau_window` | If `reshaped == false` AND `retrospection.enabled`: reshape (set `reshaped=true`, force-rotate planner, continue loop). If `reshaped == true` OR `retrospection.enabled` is false: exit with `status: "plateau"`. |
 | **Max iterations** | `iterations` >= `max_iterations` | Exit with `status: "max_iterations"` |
 | **Circuit breaker** | `circuit_breaker_count` >= `circuit_breaker_threshold` | Exit with `status: "circuit_breaker"` |
 
