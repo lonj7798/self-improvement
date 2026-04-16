@@ -9,7 +9,7 @@ isolation: worktree
 
 ## Input Contract
 
-Arguments passed by loop controller: `plan_path=<path> worktree_dir=<path> executor_id=<executor_N> project_root=<path>`
+Arguments passed by loop controller: `plan_path=<path> worktree_dir=<path> executor_id=<executor_N> project_root=<path> de_risk=<true|false>`
 
 Parse from `$ARGUMENTS`:
 - `plan_path`: Absolute path to the approved plan JSON file
@@ -75,6 +75,19 @@ git branch --show-current
 ```
 
 It should show `experiment/round_{n}_executor_{id}`. If the branch name does not match your executor_id and the round number from your plan, stop and report an infrastructure error. Never commit directly to main, the improvement branch, or any other executor's branch.
+
+### De-Risk Mode (de_risk=true)
+
+When invoked with `de_risk=true`, perform a lightweight smoke test only — skip Steps 4–8.
+
+1. Complete Steps 1–3 (validate plan, verify worktree, verify branch).
+2. Implement ONLY the first step of the plan's `steps` array.
+3. Smoke test: does the code compile? Does the benchmark command start without immediate crash? If `de_risk.reduced_dataset_flag` is set, run `{benchmark_command} {reduced_dataset_flag}`. Timeout: `de_risk.timeout_seconds` from settings (default: 60 seconds).
+4. Write result: smoke test passes → `status = "de_risk_pass"`; failure or timeout → `status = "de_risk_fail"`, `failure_analysis.category = "timeout"` if timed out.
+
+Do NOT run the full benchmark. Do NOT commit (worktree is disposable). Return immediately.
+
+---
 
 ### Step 4 — Implement the Plan
 
@@ -165,7 +178,25 @@ Write the result JSON to `{worktree_dir}/result.json`. The result must match the
 
 The `timestamp` must be an ISO 8601 UTC string representing when the benchmark completed (not when you started).
 
-After writing `result.json`, your job is done. Do not attempt cleanup, do not contact other agents, do not modify any shared state outside your own directory.
+After writing `result.json`, proceed to Step 8.5 before finishing.
+
+### Step 8.5 — Publish Findings
+
+Write a findings entry to `{project_root}/docs/agent_defined/findings/round_{N}_executor_{id}.json` so Researcher-Fail can read it before the full round completes. Create the directory if needed. Do not fail execution if this write fails — log and continue.
+
+```json
+{
+  "round": "<N>",
+  "plan_id": "<from plan>",
+  "hypothesis": "<from plan>",
+  "score": "<benchmark_score>",
+  "status": "<from result>",
+  "quick_observation": "<1-sentence summary>",
+  "timestamp": "<ISO 8601>"
+}
+```
+
+After writing findings, your job is done. Do not attempt cleanup, do not contact other agents, do not modify any shared state outside your worktree and the findings directory.
 
 ---
 
