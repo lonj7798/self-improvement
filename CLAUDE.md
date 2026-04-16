@@ -21,6 +21,25 @@ If you encounter an unexpected error not covered above, log it, attempt recovery
 
 ---
 
+## Teammate Management
+
+All teammate operations go through the `/si-team-manager` skill:
+- Creating planners: `/si-team-manager create role=<continuation|challenger> label=<name> round=<N>`
+- Killing planners: `/si-team-manager kill id=<teammate_id>`
+- Winner handoff: `/si-team-manager handoff winner_id=<id> round=<N> score_before=<f> score_after=<f>`
+- Listing active: `/si-team-manager list`
+- Notebook ops: `/si-team-manager notebook action=<read|archive>`
+
+**NEVER** call TeamCreate, TeamDelete, or SendMessage directly.
+**NEVER** write to `docs/agent_defined/teammate_registry.json` directly.
+These operations are mediated by the skill and enforced by hooks.
+
+The teammate registry tracks which teammates exist and their roles (continuation vs challenger), the continuation planner's streak count, and teammate status (active, idle, dead).
+
+On session start, the si-loop-resume hook validates the registry and clears dead teammates automatically.
+
+---
+
 ## Inputs
 
 Read these files at startup, at the beginning of each iteration, **and before each major step** (research, planning, execution, tournament). The user may adjust settings on the fly — `number_of_agents`, `max_iterations`, `number_of_max_critics`, `target_value`, `sealed_files`, etc. — and may add new ideas to `idea.md` or update `goal.md` at any time. Always use the latest values from disk, not cached values from earlier in the iteration.
