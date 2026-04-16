@@ -18,6 +18,12 @@ This document defines the canonical JSON schemas for all messages exchanged betw
 10. [Plan Archive](#10-plan-archive)
 11. [Event Log](#11-event-log)
 12. [Goal Phase](#12-goal-phase)
+13. [Teammate Registry](#13-teammate-registry)
+14. [Continuation Planner Notebook](#14-continuation-planner-notebook)
+15. [Findings Entry](#15-findings-entry)
+16. [Retrospection Signal](#16-retrospection-signal)
+17. [Hybrid Plan Metadata](#17-hybrid-plan-metadata)
+18. [De-Risk Result](#18-de-risk-result)
 
 ---
 
@@ -606,3 +612,187 @@ Each phase is defined within the `## Phases` section of `goal.md`:
 ```
 
 Phase transitions do not affect tournament selection — the primary `benchmark_score` always drives winner selection. Phases provide tracking and strategic guidance only.
+
+---
+
+## 13. Teammate Registry
+
+**Producer:** orchestrator
+**Consumer:** orchestrator (on resume), team manager
+
+Tracks all active and historical planner teammates. Written whenever a teammate is created, killed, or transitions state. On resume, used to determine which teammates are alive and whether a continuation planner exists.
+
+**File location:** `docs/agent_defined/teammate_registry.json`
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `teammates` | array of objects | All teammate entries, past and present. |
+| `updated_at` | string or null | ISO 8601 timestamp of the last write. `null` in the initial empty file. |
+| `teammates[].teammate_id` | string | Unique identifier. Format: `{role}_{round}` (e.g., `continuation_planner_3`). |
+| `teammates[].role` | string | One of: `continuation_planner`, `challenger_b`, `challenger_c`. |
+| `teammates[].created_at` | string | ISO 8601 timestamp of creation. |
+| `teammates[].round` | integer | Round in which this teammate was first activated. |
+| `teammates[].status` | string | One of: `active`, `dead`, `idle`. |
+| `teammates[].streak` | integer | Consecutive wins. `0` for challengers and newly created continuation planners. |
+
+### Example
+
+```json
+{
+  "teammates": [
+    {
+      "teammate_id": "continuation_planner_3",
+      "role": "continuation_planner",
+      "created_at": "2026-03-28T14:00:00Z",
+      "round": 3,
+      "status": "active",
+      "streak": 1
+    }
+  ],
+  "updated_at": "2026-03-28T14:00:00Z"
+}
+```
+
+---
+
+## 14. Continuation Planner Notebook
+
+**Producer:** continuation planner
+**Consumer:** continuation planner (on next round), hybrid planner (if enabled)
+
+Persistent memory read at round start and updated after win/loss feedback. Challengers never read it. On rotation the old notebook is archived and the new planner starts fresh.
+
+**File location:** `docs/agent_defined/notebook.json` — archived to `docs/agent_defined/notebooks/round_{N}.json` on rotation.
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `planner_id` | string or null | Identifier of the planner holding this notebook. `null` before any winner exists. |
+| `rounds_active` | array of integers | Rounds in which this planner was active as continuation planner. |
+| `streak` | integer | Current consecutive-win count. Mirrors `streak` in teammate registry. |
+| `observations` | array of objects | Per-round observations. Each has: `round` (int), `what_worked` (str), `what_surprised` (str), `next_idea` (str), `executor_feedback` (str). |
+| `dead_ends` | array of strings | Approaches proven not to work. Prevents re-proposing exhausted directions. |
+| `current_theory` | string or null | Working hypothesis about the bottleneck. Updated each round. `null` until first observation. |
+
+### Example
+
+```json
+{
+  "planner_id": "continuation_planner_3",
+  "rounds_active": [3, 4],
+  "streak": 1,
+  "observations": [
+    { "round": 3, "what_worked": "Caching hot path reduced latency by 12%", "what_surprised": "Memory usage did not increase as expected", "next_idea": "Try connection pooling", "executor_feedback": "No file conflicts" }
+  ],
+  "dead_ends": ["Async refactor of module X — no measurable improvement"],
+  "current_theory": "Bottleneck is I/O bound. Changes that reduce round-trips are working."
+}
+```
+
+---
+
+## 15. Findings Entry
+
+**Producer:** orchestrator (after each executor completes)
+**Consumer:** Researcher-Fail (all findings including mid-round), continuation planner and challengers (completed-round only)
+
+Published immediately after each executor completes, even mid-round. **File location:** `docs/agent_defined/findings/round_{N}_executor_{id}.json`
+
+| Field | Type | Description |
+|---|---|---|
+| `round` | integer | Round in which this executor ran. |
+| `plan_id` | string | Links finding back to the executed plan. |
+| `hypothesis` | string | Hypothesis copied verbatim for quick scanning. |
+| `score` | number | Benchmark score produced. |
+| `status` | string | One of: `success`, `regression`, `error`, `timeout`. Same as [Benchmark Result](#2-benchmark-result). |
+| `quick_observation` | string | One-sentence observation; seeds Researcher-Fail. |
+| `timestamp` | string | ISO 8601 timestamp. |
+
+```json
+{ "round": 4, "plan_id": "round_4_planner_b", "hypothesis": "Connection pooling reduces round-trip overhead", "score": 91.3, "status": "success", "quick_observation": "Helped only with >100 concurrent requests", "timestamp": "2026-03-28T15:30:00Z" }
+```
+
+---
+
+## 16. Retrospection Signal
+
+**Producer:** orchestrator (Step 9½)
+**Consumer:** orchestrator (same step — drives next-round configuration)
+
+In-memory dispatch object. Not persisted to disk; effects are reflected in settings, teammate state, and research brief directives. Fields: `signal` (string), `detected_at_round` (integer), `data` (object — signal-specific payload, see table), `actions` (array of strings).
+
+### Signal Triggers and Actions
+
+| Signal | Trigger | `data` fields | Actions |
+|---|---|---|---|
+| `plateau` | `plateau_consecutive_count` >= `plateau_window` | `consecutive_count` (int), `threshold` (num), `reshaped` (bool) | Force-rotate continuation planner; elevate Researcher-Fail; inject diversity directive. If `reshaped=true` and plateau persists, stop. |
+| `high_failure_rate` | >  `failure_rate_threshold_pct`% plans rejected or failed | _(none)_ | Spawn meta-researcher; feed findings to next round's planners as highest-priority brief. |
+| `family_concentration` | Same family won 2+ of last `family_concentration_window` rounds | `concentrated_family` (str), `window_wins` (int) | Forbid that family for challengers; inject Researcher-Ext directive to search outside it. |
+| `near_miss` | Losing executor scored within `near_miss_threshold_pct`% of winner | `near_miss_plan_id` (str), `near_miss_score` (num), `winner_score` (num), `gap_pct` (num) | Promote near-miss as research seed for one challenger next round. |
+
+### Example
+
+```json
+{
+  "signal": "near_miss",
+  "detected_at_round": 5,
+  "data": { "near_miss_plan_id": "round_5_planner_c", "near_miss_score": 87.9, "winner_score": 89.2, "gap_pct": 1.46 },
+  "actions": ["Inject near-miss seed into challenger_b for round 6: refine round_5_planner_c approach"]
+}
+```
+
+---
+
+## 17. Hybrid Plan Metadata
+
+**Extension of:** [Plan Document](#1-plan-document) (`hybrid_metadata` field)
+**Producer:** hybrid planner
+**Consumer:** critic (redundancy check), orchestrator (tournament, winner handoff)
+
+Extension field added to the standard plan document by the hybrid planner. Required on hybrid plans; absent on all others. Rejected by critic if >  `redundancy_threshold_pct`% similar to any single source plan.
+
+| Field | Type | Description |
+|---|---|---|
+| `hybrid_metadata` | object or null | `null` on non-hybrid plans. |
+| `hybrid_metadata.source_plans` | array of strings | `plan_id` values synthesized from. Minimum 2 entries. |
+| `hybrid_metadata.synthesis_strategy` | string | One of: `combine` (compound related areas), `refine` (rewrite execution with cross-plan insight), `contrast` (resolve a tension). |
+| `hybrid_metadata.rationale` | string | Why this synthesis is stronger than any individual source plan. |
+
+```json
+{
+  "plan_id": "round_4_hybrid",
+  "planner_id": "hybrid",
+  "hybrid_metadata": {
+    "source_plans": ["round_4_planner_cont", "round_4_planner_b"],
+    "synthesis_strategy": "combine",
+    "rationale": "Planner-cont proposed caching; planner-b proposed connection pooling. Combined, they eliminate redundant calls and reduce per-call cost."
+  }
+}
+```
+
+---
+
+## 18. De-Risk Result
+
+**Producer:** de-risk validator (Step 7c)
+**Consumer:** orchestrator (gates full execution), Researcher-Fail (failed de-risk feeds failure analysis)
+
+Lightweight smoke test outcome per critic-approved plan. A failed de-risk excludes the plan from Step 8. **File location:** `docs/agent_defined/findings/derisk_round_{N}_plan_{plan_id}.json`
+
+| Field | Type | Description |
+|---|---|---|
+| `plan_id` | string | The plan that was de-risked. |
+| `round` | integer | Round number. |
+| `passed` | boolean | `true` if smoke test passed and full execution may proceed. |
+| `status` | string | One of: `passed`, `compile_error` (syntax/import failure), `start_error` (benchmark failed to start), `smoke_timeout` (exceeded timeout), `smoke_regression` (reduced-dataset run regressed). |
+| `step_applied` | integer | Plan step applied (always `1`). |
+| `duration_seconds` | number | Wall-clock seconds taken. |
+| `error_detail` | string or null | `null` on `passed`. Error message or regression magnitude on failure. |
+| `timestamp` | string | ISO 8601 timestamp. |
+
+```json
+{ "plan_id": "round_4_planner_b", "round": 4, "passed": false, "status": "compile_error", "step_applied": 1, "duration_seconds": 3.2, "error_detail": "ImportError: No module named 'connection_pool' at src/db.py line 12", "timestamp": "2026-03-28T15:00:00Z" }
+```
