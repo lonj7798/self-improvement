@@ -268,6 +268,46 @@ If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected
   - planner_c: {APPROVED|REJECTED} {rejection_reason if rejected}
 ```
 
+### Step 7a½ — Hybrid Planner (if hybrid_planner.enabled)
+
+**Before**: Read `hybrid_planner` settings. If `hybrid_planner.enabled` is `false` or not set, skip this step entirely.
+
+If `hybrid_planner.enabled` is `true` in settings, spawn a hybrid planner subagent that sees ALL plans from Step 7a plus all 3 research briefs.
+
+The hybrid planner may: COMBINE (merge complementary ideas), REFINE (strengthen one plan with others' insights), CONTRAST (resolve tension between plans), or SKIP (all plans already strong and diverse).
+
+If SKIP: proceed with the 3 original plans only.
+If a hybrid plan is produced: it goes through the same critic review (Step 7b) and must pass H001-H005 including the H005 hybrid redundancy check. The hybrid plan competes equally in the tournament.
+
+If `hybrid_planner.enabled` is `false` or not set: skip this step entirely.
+
+**After**: Update `iteration_state.json` hybrid section. Update `hybrid_stats` in `docs/agent_defined/settings.json`. Print:
+```
+[Iteration {N}] Hybrid planner: {SKIP|plan produced} ({reason}).
+```
+
+### Step 7c — De-Risk (if de_risk.enabled)
+
+**Before**: Read `de_risk` settings. If `de_risk.enabled` is `false` or not set, skip to Step 8.
+
+If `de_risk.enabled` is `true` in settings, run a lightweight smoke test for each critic-approved plan before full execution.
+
+For each approved plan (parallel):
+1. Create a minimal worktree
+2. Apply only step 1 of the plan
+3. Run: does the code compile? Does the benchmark command start?
+4. Time budget: `de_risk.timeout_seconds` (default 60s)
+5. If smoke test fails: reject plan, log failure to `findings/`, exclude from Step 8
+
+Plans that pass de-risk proceed to full execution. Plans that fail are logged as de-risk failures for Researcher-Fail to analyze in future rounds.
+
+If `de_risk.enabled` is `false` or not set: skip this step entirely.
+
+**After**: Update `iteration_state.json` `de_risk` section. Print:
+```
+[Iteration {N}] De-risk: {passed}/{total} plans passed smoke test.
+```
+
 ### Step 8 — Execution → Agent: `si-executor`
 
 **Before**: Re-read `docs/user_defined/settings.json` for latest `benchmark_command` and `sealed_files`. Update `iteration_state.json`: `current_step: "execution"`, `execution.status: "in_progress"`, `updated_at: <now>`. For each executor, set `execution.executors.{executor_id}.status: "pending"`, `execution.executors.{executor_id}.plan_id: <plan_id>`. Print:
