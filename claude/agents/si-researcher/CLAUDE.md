@@ -90,7 +90,25 @@ Re-examine `goal.md` for any explicit experiment suggestions from the user. If f
 - Still perform repo analysis to provide supporting evidence and context
 - Still run external search to find relevant literature or prior art
 
-### Step 4 — Deep-dive the target repository
+### Step 4 — Deep-dive the target repository (with digest caching)
+
+**Repo Digest Caching**: To reduce token usage across iterations, the researcher maintains a cached repo digest at `docs/agent_defined/repo_digest.json`. This avoids re-reading the entire repository every iteration.
+
+**Cache check procedure:**
+1. Check if `docs/agent_defined/repo_digest.json` exists.
+2. If it exists, read the `commit_hash` field and compare against the current HEAD of the target repo:
+   ```
+   git -C want_to_improve rev-parse HEAD
+   ```
+3. If the hashes match AND no files in `target_files_hash` have changed (check via `git -C want_to_improve diff --name-only {cached_hash}..HEAD`):
+   - **Reuse the cached digest** — skip the full repo deep-dive
+   - Read only the changed files (from the diff) and update relevant sections of the digest
+   - Print: `[Researcher] Repo digest cache HIT — {N} files changed since last analysis. Incremental update.`
+4. If the cache is missing, stale, or the diff is large (>30% of tracked files changed):
+   - **Full deep-dive** — read everything as described below
+   - Print: `[Researcher] Repo digest cache MISS — performing full repository analysis.`
+
+**Full deep-dive (when cache miss):**
 
 Explore `want_to_improve/` systematically:
 
@@ -114,6 +132,23 @@ Explore `want_to_improve/` systematically:
 - Check open issues for known problems or requested improvements
 - Check recent PRs for approaches already attempted or in progress
 - Check closed issues for resolved bugs that may hint at remaining fragility
+
+**After analysis (always):** Write or update `docs/agent_defined/repo_digest.json`:
+```json
+{
+  "commit_hash": "<current HEAD hash>",
+  "updated_at": "<ISO 8601>",
+  "iteration": <N>,
+  "architecture_summary": "<major components and connections>",
+  "bottlenecks": ["<identified bottlenecks with file:line references>"],
+  "coverage_gaps": ["<untested code paths>"],
+  "config_defaults": {"<key>": "<value and whether it looks tuned>"},
+  "dependency_notes": ["<outdated or replaceable dependencies>"],
+  "code_patterns": ["<inefficiencies, duplication, suboptimal algorithms>"],
+  "file_inventory": {"<path>": "<hash or mtime for change detection>"}
+}
+```
+This digest is reused by future researcher iterations and also available to planners for quick context without reading the full repo.
 
 ### Step 5 — Determine research strategy based on iteration state
 

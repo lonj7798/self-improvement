@@ -40,6 +40,32 @@ On session start, the si-loop-resume hook validates the registry and clears dead
 
 ---
 
+## Multi-Goal Support
+
+The system supports multiple improvement goals that can be pursued sequentially or in priority order. Goals are defined in `docs/user_defined/goal.md` under a `## Goals` section. Each goal has its own benchmark, target, scope, and improvement branch.
+
+### How it works
+
+1. **Goal definition**: Users list multiple goals in `goal.md` with unique IDs, priorities, and independent benchmarks.
+2. **Goal scheduling**: The orchestrator processes goals in priority order. When a goal reaches its target or hits a stop condition, it advances to the next goal.
+3. **Independent tracking**: Each goal has its own improvement branch (`improve/{goal_slug}`), iteration counter, and history. Progress on one goal does not affect another.
+4. **Goal state**: `docs/agent_defined/settings.json` tracks the active goal via `active_goal_id`. Per-goal state is stored in `docs/agent_defined/goal_state/{goal_id}.json`.
+
+### Goal scheduling rules
+
+- Process goals in `priority` order (1 = highest).
+- A goal is **complete** when its `target_value` is reached or when it hits `max_iterations`.
+- A goal is **blocked** when it hits `circuit_breaker_threshold` — mark it blocked and move to the next goal.
+- When all goals are complete or blocked, exit the loop.
+- Users can add new goals to `goal.md` at any time. Re-read the file at the start of each iteration.
+- Users can change `active_goal_id` in `docs/agent_defined/settings.json` to force a goal switch.
+
+### Backward compatibility
+
+If `goal.md` uses the original single-goal format (no `## Goals` section), the system operates in single-goal mode exactly as before. Multi-goal is opt-in.
+
+---
+
 ## Inputs
 
 Read these files at startup, at the beginning of each iteration, **and before each major step** (research, planning, execution, tournament). The user may adjust settings on the fly — `number_of_agents`, `max_iterations`, `number_of_max_critics`, `target_value`, `sealed_files`, etc. — and may add new ideas to `idea.md` or update `goal.md` at any time. Always use the latest values from disk, not cached values from earlier in the iteration.
@@ -380,6 +406,45 @@ or:
 **9a — Record iteration history** to `docs/agent_defined/iteration_history/round_{n}.json` matching the schema in `docs/theory/data_contracts.md`. Print:
 ```
 [Iteration {N}] 9a: History recorded → docs/agent_defined/iteration_history/round_{n}.json
+```
+
+**9a½ — Update history digest** (token-saving optimization):
+
+After writing the individual round file, update `docs/agent_defined/history_digest.md` — a compact rolling summary that planners read instead of all individual round files. This reduces token consumption by ~90% for planners.
+
+The digest format:
+```markdown
+# Iteration History Digest
+Updated: <ISO 8601>
+Total iterations: <N>
+Best score: <score> (iteration <N>)
+Score trend: <baseline> → <current> (<delta_pct>%)
+
+## Approach Family Summary
+| Family | Attempts | Wins | Best Score | Last Tried |
+|--------|----------|------|------------|------------|
+| ... | ... | ... | ... | round N |
+
+## Key Lessons (from all iterations)
+- [Round N] <lesson from failure/success>
+- [Round N-1] <lesson>
+...
+
+## Recent Winners (last 5)
+- Round N: "<hypothesis>" (family: X, score: before→after)
+...
+
+## Recent Failures (last 5)
+- Round N: "<hypothesis>" (family: X, category: Y, lesson: Z)
+...
+
+## Exhausted Approaches
+- <approach that failed 3+ times with no improvement>
+```
+
+Append the current iteration's results to the digest. Keep it under 200 lines — trim older entries from "Key Lessons" and "Recent" sections when they exceed 5 entries each. Print:
+```
+[Iteration {N}] 9a½: History digest updated (token savings for planners).
 ```
 
 **9b — Update state** in `docs/agent_defined/settings.json`. This is the **sole authority** for counter updates:
