@@ -19,6 +19,7 @@
     "reshaped": false,
     "reshape_trigger_round": null
   },
+  "active_goal_id": null,
   "recent_winners": [],
   "hybrid_stats": {
     "total": 0,
