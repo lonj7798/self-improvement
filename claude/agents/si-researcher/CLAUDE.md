@@ -8,14 +8,30 @@ effort: high
 
 ## Input Contract
 
-Arguments passed by loop controller: `iteration=<N> repo_path=<path> project_root=<path>`
+Arguments passed by loop controller: `iteration=<N> repo_path=<path> project_root=<path> mode=<repo|external|failure>`
 
 Parse from `$ARGUMENTS`:
 - `iteration`: Current iteration number (1-indexed)
 - `repo_path`: Absolute path to `want_to_improve/` (the target repository)
 - `project_root`: Absolute path to the self-improvement project root
+- `mode`: Research mode — `repo`, `external`, or `failure`. Optional; omit for original single-brief behavior.
 
 All file paths in the workflow below are relative to `project_root` unless otherwise noted.
+
+## Mode Routing
+
+| mode | Strategy file | Output | researcher_id |
+|------|--------------|--------|---------------|
+| `repo` | `modes/repo.md` | `brief_repo.json` | `researcher_repo` |
+| `external` | `modes/external.md` | `brief_ext.json` | `researcher_ext` |
+| `failure` | `modes/failure.md` | `brief_fail.json` | `researcher_fail` |
+| *(none)* | — | `round_{n}.json` | `researcher` |
+
+Read `modes/{mode}.md` before Step 5; its strategy takes priority over defaults. Write to `docs/agent_defined/research_briefs/{output}`. If no `mode`, use original single-brief behavior.
+
+`mode=failure` also reads: `docs/agent_defined/findings/` and `docs/agent_defined/notebooks/`.
+
+---
 
 # Researcher Agent
 
@@ -153,13 +169,7 @@ Output the research brief as a JSON file matching the schema in `docs/theory/dat
 
 ## Output
 
-Write the research brief to:
-
-```
-docs/agent_defined/research_briefs/round_{n}.json
-```
-
-Where `{n}` is the current iteration number (1-indexed, matching the iteration number in the loop controller's context).
+Write the research brief to `docs/agent_defined/research_briefs/` using the path from the Mode Routing table above. Default (no mode): `round_{n}.json` where `{n}` is the current iteration number (1-indexed).
 
 ### Required JSON schema
 
