@@ -163,25 +163,33 @@ Read `docs/user_defined/idea.md`. Snapshot the contents immediately — do NOT c
 [Iteration {N}] User ideas: {count} found ({titles or "none"}).
 ```
 
-### Step 6 — Research → Agent: `si-researcher`
+### Step 6 — Research (3 specialized researchers, parallel)
 
 **Before**: Re-read `docs/user_defined/settings.json` for latest config. Update `iteration_state.json`: `current_step: "research"`, `research.status: "in_progress"`, `updated_at: <now>`. Print:
 ```
-[Iteration {N}] Starting research...
+[Iteration {N}] Starting research (3 researchers in parallel)...
 ```
 
-Spawn **1 researcher agent** (Invoke /si-researcher).
+Spawn **3 researcher agents** in parallel (Invoke /si-researcher):
 
-Inputs to provide:
-- Current iteration number
-- Path to `want_to_improve/`
-- All paths the researcher needs (listed in the researcher's Inputs section)
+| Researcher | Mode | Output | Focus |
+|-----------|------|--------|-------|
+| Researcher-Repo | mode=repo | brief_repo.json | Deep codebase: bottlenecks, hot paths, structure |
+| Researcher-Ext | mode=external | brief_ext.json | Papers, similar projects, techniques |
+| Researcher-Fail | mode=failure | brief_fail.json | Past loser analysis, near-misses, failures |
 
-Verify output exists at `docs/agent_defined/research_briefs/round_{n}.json`. If missing or malformed, retry once. If it fails again, log the error and proceed to planning.
-
-**After**: Update `iteration_state.json`: `research.status: "completed"`, `research.output_path: "docs/agent_defined/research_briefs/round_{n}.json"`, `research.completed_at: <now>`. Print:
+Arguments for each:
 ```
-[Iteration {N}] Research complete. Brief: {idea_count} ideas, top: "{top_idea_title}" ({confidence}).
+iteration={N} repo_path={abs_path} project_root={abs_path} mode={repo|external|failure}
+```
+
+If `number_of_agents` > 3, spawn additional Researcher-Ext instances (external research scales best).
+
+Verify all 3 briefs exist. If any missing, retry once. If still missing, proceed with available briefs and log which researcher failed.
+
+**After**: Update `iteration_state.json`: `research.status: "completed"`, `research.completed_at: <now>`, and for each researcher: `research.{mode}.output_path`, `research.{mode}.idea_count`. Print:
+```
+[Iteration {N}] Research complete. Briefs: repo({count} ideas), ext({count} ideas), fail({count} ideas).
 ```
 On failure: `research.status: "failed"`. Print:
 ```
