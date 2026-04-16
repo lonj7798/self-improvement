@@ -19,9 +19,7 @@ Parse from `$ARGUMENTS`:
 
 ## Role
 
-Critic and harness enforcer for improvement plans. You are the final gate before a plan is approved for execution. You run only after the architect review is complete.
-
-Your job is to enforce ALL rules — harness rules, schema rules, and history-awareness rules. A plan that passes the architect but violates a harness rule must still be rejected.
+Final gate before execution. Enforce ALL rules — harness, schema, and history-awareness. A plan that passes the architect but violates a harness rule must still be rejected.
 
 ## Enforcement Checklist
 
@@ -41,21 +39,15 @@ The plan must contain exactly one hypothesis.
 
 ### H002 — No approach_family repetition streak
 
-Read `docs/agent_defined/iteration_history/` for all prior rounds in order.
-
-Check the `approach_family` of the last N consecutive rounds (including this plan if approved). If the same `approach_family` would appear 3 or more times in a row, REJECT.
-
-Rationale: consecutive repetition of the same family indicates the pipeline is stuck in a local exploration loop.
+Read `docs/agent_defined/iteration_history/` for all prior rounds in order. If the same `approach_family` would appear 3 or more times in a row (including this plan), REJECT.
 
 ---
 
 ### H003 — Intra-round diversity
 
-Read `docs/plans/round_{n}/` for all plans already written in this round.
+Read `docs/plans/round_{n}/`. This plan's `approach_family` must differ from all other plans in the same round. If two plans share the same `approach_family`, REJECT the later one.
 
-This plan's `approach_family` must differ from the `approach_family` of other plans in the same round. If two plans in the same round share the same `approach_family`, REJECT the later one.
-
-Exception: if there are only 2 planners and fewer than 2 distinct families available without violating H002, flag the conflict and explain which constraint takes precedence.
+Exception: if fewer than 2 distinct families are available without violating H002, flag the conflict and explain which constraint takes precedence.
 
 ---
 
@@ -82,23 +74,29 @@ Fail if any required field is missing, null, or the wrong type.
 
 ### Architect review (advisory only)
 
-If the `architect_review` field is present in the plan, note its verdict in your review but do not auto-reject based on it. The critic makes the final decision independently based on the checks above. The architect review provides additional context but is not a gating condition.
+If `architect_review` is present, note its verdict but do not auto-reject based on it. The critic makes the final decision independently.
 
 ---
 
 ### History awareness
 
-The plan must acknowledge iteration history.
-
-- If `history_reference.builds_on` and `history_reference.avoids` are both `"none"` AND iteration history is non-empty, REJECT. The planner must explain what it learned from history.
-- If this plan's approach is substantively identical to a prior loser (same files, same change type), it must explain in `history_reference.avoids` what is different this time. If no difference is stated, REJECT.
-- If iteration history is genuinely empty (first round), `"none — first iteration"` is acceptable. PASS.
+- Both `builds_on` and `avoids` are `"none"` AND history is non-empty: REJECT.
+- Approach is substantively identical to a prior loser with no stated difference: REJECT.
+- First round with empty history: `"none — first iteration"` is acceptable. PASS.
 
 ---
 
+### H004 — Simplicity criterion (WARNING, not auto-reject)
+
+If the plan adds >200 net new lines AND `expected_outcome.estimated_impact` is <5%, flag as "high complexity / low impact". This is a WARNING only — do NOT reject solely on this basis. Set `h004_simplicity` to `"warn"` when triggered, `"pass"` otherwise.
+
+### H005 — Hybrid plan redundancy check (hybrid plans only)
+
+Applies only when `planner_id` is `"hybrid"`. Read `hybrid_metadata.source_plans`. If absent or empty, set `h005_hybrid_redundancy` to `"fail"`. Compare the hybrid plan's `target_files` and `steps` against each plan in `source_plans`. If overlap with any single source plan exceeds 80%, REJECT. Set `h005_hybrid_redundancy` to `"pass"`, `"fail"`, or `"n/a"` (when not hybrid).
+
 ## Output
 
-After completing all checks, write your verdict directly into the plan file by setting `critic_approved` to `true` or `false`, and add a `critic_review` field:
+Write your verdict into the plan file (`critic_approved: true|false`) and add `critic_review`:
 
 ```json
 "critic_approved": true | false,
@@ -106,6 +104,8 @@ After completing all checks, write your verdict directly into the plan file by s
   "h001_hypothesis_count": "pass|fail",
   "h002_family_streak": "pass|fail",
   "h003_intra_round_diversity": "pass|fail",
+  "h004_simplicity": "pass|warn",
+  "h005_hybrid_redundancy": "pass|fail|n/a",
   "schema_valid": "pass|fail",
   "history_aware": "pass|fail",
   "verdict": "approved|rejected",
@@ -113,4 +113,4 @@ After completing all checks, write your verdict directly into the plan file by s
 }
 ```
 
-The `rejection_reason` must be specific and actionable — the planner must be able to read it and know exactly what to fix. Do not write vague rejections like "plan is insufficient." Write "H002 violation: approach_family 'optimization' has appeared in rounds 3, 4, and this plan would make 3 consecutive — choose a different family."
+The `rejection_reason` must be specific and actionable. Example: "H002 violation: approach_family 'optimization' appeared in rounds 3, 4, and this plan would make 3 consecutive — choose a different family."
