@@ -439,6 +439,20 @@ This preserves plans permanently even if `docs/plans/` is cleaned between runs. 
 [Iteration {N}] 9f: Plans archived → docs/agent_defined/plan_archive/round_{n}/
 ```
 
+**9g — Winner handoff**: Invoke `/si-team-manager handoff winner_id={id} round={N} score_before={before} score_after={after}` to manage the continuation planner lifecycle:
+- If streak >= 3: force rotation (all teammates killed, notebook archived)
+- If continuation planner won: streak incremented, challengers killed
+- If challenger won: old continuation killed and archived, challenger promoted, notebook archived
+- If no winner: continuation planner receives "No winner. Rethink approach." feedback; challengers killed
+
+After each executor completes, publish findings to `docs/agent_defined/findings/round_{N}_executor_{id}.json` containing: `{ round, plan_id, hypothesis, score, status, quick_observation, timestamp }`.
+
+Print:
+```
+[Iteration {N}] 9g: Winner handoff complete. Continuation: {id or "none"} (streak: {streak}).
+[Iteration {N}] 9g: Findings published → docs/agent_defined/findings/ ({count} files).
+```
+
 **After Step 9**: Print full iteration summary:
 ```
 [Iteration {N}] Complete. Best score: {best_score}. Target: {target_value}. Progress: {delta_pct}%.
