@@ -8,12 +8,15 @@ effort: high
 
 ## Input Contract
 
-Arguments passed by loop controller: `iteration=<N> planner_id=<planner_a|planner_b|...> project_root=<path>`
+Arguments passed by loop controller: `iteration=<N> planner_id=<planner_a|planner_b|...> role=<planner_cont|planner_b|planner_c> project_root=<path>`
 
 Parse from `$ARGUMENTS`:
 - `iteration`: Current iteration number (1-indexed)
 - `planner_id`: Your identity — determines which idea range you pick from the research brief
+- `role`: Your behavioral role — `planner_cont` (continuation planner) or `planner_b`/`planner_c` (challenger planners)
 - `project_root`: Absolute path to the self-improvement project root
+- `brief_paths`: Comma-separated paths to research brief files (provided to challenger planners only)
+- `notebook_path`: Path to `docs/agent_defined/notebook.json` (provided to continuation planner only)
 
 All file paths below are relative to `project_root` unless otherwise noted.
 
@@ -33,6 +36,40 @@ Hypothesis generator. You produce exactly 1 plan with 1 testable hypothesis per 
 - `docs/user_defined/harness.md` — rules you must follow
 - `docs/user_defined/idea.md` — User-provided experiment ideas. If present and non-empty, `planner_a` MUST use one of these ideas as the basis for their plan.
 - `docs/theory/data_contracts.md` — output format specification
+
+## Role-Based Behavior
+
+Your `role` argument determines your strategy and information sources for this round.
+
+### Continuation Planner (role=planner_cont)
+
+You are the persistent teammate. You carried context from prior winning rounds and you are the EXPLOIT lane.
+
+- **Strategy: EXPLOIT** — deepen what is working. Build directly on the winning approach from the previous round. Do not start fresh; extend and refine the proven direction.
+- **Notebook protocol**: Read `notebook.json` at the start of every round. The notebook contains accumulated observations from prior rounds: what worked, what did not, and the current theory of improvement. After producing your plan, append an observation entry to `notebook.json` and update `current_theory`.
+- **No research briefs**: You do not receive `brief_paths`. Your context comes from the notebook and iteration history.
+- **User ideas**: If `docs/user_defined/idea.md` is present and non-empty, you MUST use a user idea as the basis for your plan.
+
+### Challenger Planner (role=planner_b or role=planner_c)
+
+You are a fresh teammate each round. You have no accumulated context. You are the EXPLORE lane.
+
+- **Strategy: EXPLORE** — propose a novel approach driven by evidence in the research briefs. Do not default to the same approach as the continuation planner.
+- **Research briefs**: You receive `brief_paths` pointing to one or more research briefs (`brief_repo`, `brief_ext`, `brief_fail`). Read all provided briefs and pick an idea from them.
+- **No notebook**: You do not read or write `notebook.json`. Your perspective is fresh by design.
+- **Diversity**: Check plans already written in `docs/plans/round_{n}/` and pick an idea that does not duplicate an existing plan.
+
+### Notebook Protocol (continuation planner only)
+
+1. Read `notebook.json` from `notebook_path` before formulating your plan.
+2. The notebook schema: `{ "current_theory": "...", "observations": [ { "round": N, "outcome": "win|loss", "note": "..." } ] }`
+3. After writing your plan file, update `notebook.json`:
+   - Append `{ "round": <n>, "outcome": "pending", "note": "<key insight from this plan>" }` to `observations`
+   - Revise `current_theory` to reflect your current best understanding
+4. Write the updated `notebook.json` back to `notebook_path`.
+5. If `notebook.json` does not exist yet, create it with an empty `observations` array.
+
+---
 
 ## Workflow
 
