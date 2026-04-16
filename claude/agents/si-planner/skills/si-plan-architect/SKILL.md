@@ -71,6 +71,16 @@ Is the expected impact realistic given the evidence?
 
 Fail if: the expected outcome is not grounded in cited evidence, or the estimate is implausibly large or small.
 
+### 7. Simplicity assessment
+
+Is the proposed change proportionate to its expected impact?
+- Estimate the net lines of code added by the plan's steps.
+- Compare the estimated impact (from expected_outcome) with the complexity cost.
+- If the plan adds more than ~200 net lines AND the expected improvement is less than 5%, flag as "high complexity / low impact."
+- Simplicity is a soft signal: flag it, do not auto-fail on it alone.
+
+Fail if: the plan adds extreme complexity (>500 lines, new dependencies, new abstractions) for marginal expected gain, with no justification for why the complexity is necessary.
+
 ## Output Format
 
 Provide your review as structured feedback:
@@ -84,6 +94,7 @@ ARCHITECT REVIEW
 4. Target files: [PASS|FAIL] — <reason>
 5. Implementation clarity: [PASS|FAIL] — <reason>
 6. Expected outcome: [PASS|FAIL] — <reason>
+7. Simplicity: [PASS|FAIL] — <reason>
 
 VERDICT: [APPROVE|REJECT]
 
