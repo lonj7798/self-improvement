@@ -414,134 +414,107 @@ check_plan_schema() {
 check_result_schema() {
     local result_file="$1"
     require_jq
+    [[ ! -f "${result_file}" ]] && { err "Result file not found: ${result_file}"; exit 1; }
 
-    if [[ ! -f "${result_file}" ]]; then
-        err "Result file not found: ${result_file}"
-        exit 1
-    fi
-
-    local required_fields="executor_id plan_id benchmark_score status timestamp benchmark_raw"
     local missing=""
-
-    for field in ${required_fields}; do
+    for field in executor_id plan_id benchmark_score status timestamp benchmark_raw; do
         val=$(jq -r --arg f "${field}" '.[$f]' "${result_file}" 2>/dev/null)
         if [[ "${val}" == "null" || -z "${val}" ]]; then
-            # benchmark_raw can be empty string on error/timeout, benchmark_score can be 0
-            if [[ "${field}" == "benchmark_raw" ]]; then
-                # Check it exists (even if empty)
-                exists=$(jq --arg f "${field}" 'has($f)' "${result_file}" 2>/dev/null || echo "false")
-                if [[ "${exists}" != "true" ]]; then
-                    missing="${missing} ${field}"
-                fi
-            elif [[ "${field}" == "benchmark_score" ]]; then
-                # Allow 0 as a valid score
-                exists=$(jq --arg f "${field}" 'has($f)' "${result_file}" 2>/dev/null || echo "false")
-                if [[ "${exists}" != "true" ]]; then
-                    missing="${missing} ${field}"
-                fi
+            # benchmark_raw/benchmark_score: allow empty/zero — just check key exists
+            if [[ "${field}" == "benchmark_raw" || "${field}" == "benchmark_score" ]]; then
+                [[ "$(jq --arg f "${field}" 'has($f)' "${result_file}" 2>/dev/null)" != "true" ]] && missing="${missing} ${field}"
             else
                 missing="${missing} ${field}"
             fi
         fi
     done
-
-    if [[ -n "${missing}" ]]; then
-        err "Result is missing required fields:${missing}"
-        exit 1
-    fi
-
+    [[ -n "${missing}" ]] && { err "Result is missing required fields:${missing}"; exit 1; }
     ok "Result contains all required fields."
 
-    # Validate status enum
-    local status
-    status=$(jq -r '.status' "${result_file}" 2>/dev/null)
+    local status; status=$(jq -r '.status' "${result_file}" 2>/dev/null)
     case "${status}" in
-        success|regression|error|timeout) ;;
-        *)
-            err "Invalid status '${status}'. Must be one of: success, regression, error, timeout"
-            exit 1
-            ;;
+        success|regression|error|timeout|de_risk_pass|de_risk_fail) ;;
+        *) err "Invalid status '${status}'. Must be one of: success, regression, error, timeout, de_risk_pass, de_risk_fail"; exit 1 ;;
     esac
-
     ok "Status '${status}' is valid."
 
-    # Check failure_analysis on non-success status
-    if [[ "${status}" != "success" ]]; then
-        local fa_type
-        fa_type=$(jq -r '.failure_analysis | type' "${result_file}" 2>/dev/null)
-        if [[ "${fa_type}" != "object" ]]; then
-            err "failure_analysis must be a non-null object when status is '${status}' (got ${fa_type})"
-            exit 1
-        fi
-
-        # Verify failure_analysis has required fields
-        local fa_fields="what why category lesson"
+    if [[ "${status}" != "success" && "${status}" != "de_risk_pass" && "${status}" != "de_risk_fail" ]]; then
+        local fa_type; fa_type=$(jq -r '.failure_analysis | type' "${result_file}" 2>/dev/null)
+        [[ "${fa_type}" != "object" ]] && { err "failure_analysis must be a non-null object when status is '${status}' (got ${fa_type})"; exit 1; }
         local fa_missing=""
-        for field in ${fa_fields}; do
+        for field in what why category lesson; do
             val=$(jq -r --arg f "${field}" '.failure_analysis[$f]' "${result_file}" 2>/dev/null)
-            if [[ "${val}" == "null" || -z "${val}" ]]; then
-                fa_missing="${fa_missing} ${field}"
-            fi
+            [[ "${val}" == "null" || -z "${val}" ]] && fa_missing="${fa_missing} ${field}"
         done
-
-        if [[ -n "${fa_missing}" ]]; then
-            err "failure_analysis is missing required fields:${fa_missing}"
-            exit 1
-        fi
-
+        [[ -n "${fa_missing}" ]] && { err "failure_analysis is missing required fields:${fa_missing}"; exit 1; }
         ok "failure_analysis is complete for non-success status."
 
-        # Validate failure_analysis.category enum
-        local fa_category
-        fa_category=$(jq -r '.failure_analysis.category' "${result_file}" 2>/dev/null)
-        local valid_categories="oom timeout regression logic_error scope_error infrastructure benchmark_parse_error sealed_file_violation"
+        local fa_category; fa_category=$(jq -r '.failure_analysis.category' "${result_file}" 2>/dev/null)
         local cat_valid=0
-        for cat in ${valid_categories}; do
-            if [[ "${fa_category}" == "${cat}" ]]; then
-                cat_valid=1
-                break
-            fi
+        for cat in oom timeout regression logic_error scope_error infrastructure benchmark_parse_error sealed_file_violation; do
+            [[ "${fa_category}" == "${cat}" ]] && cat_valid=1 && break
         done
-
-        if [[ ${cat_valid} -eq 0 ]]; then
-            err "failure_analysis.category '${fa_category}' is not valid. Must be one of: ${valid_categories}"
-            exit 1
-        fi
-
+        [[ ${cat_valid} -eq 0 ]] && { err "failure_analysis.category '${fa_category}' is not valid"; exit 1; }
         ok "failure_analysis.category '${fa_category}' is valid."
     fi
 
-    # Validate sub_scores field (if present)
-    local has_sub_scores
-    has_sub_scores=$(jq 'has("sub_scores")' "${result_file}" 2>/dev/null || echo "false")
+    local has_sub_scores; has_sub_scores=$(jq 'has("sub_scores")' "${result_file}" 2>/dev/null || echo "false")
     if [[ "${has_sub_scores}" == "true" ]]; then
-        local sub_scores_type
-        sub_scores_type=$(jq -r '.sub_scores | type' "${result_file}" 2>/dev/null)
-        if [[ "${sub_scores_type}" == "null" ]]; then
-            ok "sub_scores is null (single-score mode)."
-        elif [[ "${sub_scores_type}" == "object" ]]; then
-            # Verify all values are numbers or null
-            local invalid_values
-            invalid_values=$(jq -r '.sub_scores | to_entries[] | select(.value != null and (.value | type) != "number") | .key' "${result_file}" 2>/dev/null)
-            if [[ -n "${invalid_values}" ]]; then
-                err "sub_scores contains non-numeric values for keys: ${invalid_values}"
-                exit 1
-            fi
-            # Verify all keys are non-empty strings
-            local empty_keys
-            empty_keys=$(jq -r '.sub_scores | keys[] | select(length == 0)' "${result_file}" 2>/dev/null)
-            if [[ -n "${empty_keys}" ]]; then
-                err "sub_scores contains empty string keys"
-                exit 1
-            fi
-            local sub_scores_count
-            sub_scores_count=$(jq '.sub_scores | length' "${result_file}" 2>/dev/null)
-            ok "sub_scores is a valid object (${sub_scores_count} dimension(s))."
-        else
-            err "sub_scores must be an object or null (got ${sub_scores_type})"
-            exit 1
-        fi
+        local sst; sst=$(jq -r '.sub_scores | type' "${result_file}" 2>/dev/null)
+        if [[ "${sst}" == "null" ]]; then ok "sub_scores is null (single-score mode)."
+        elif [[ "${sst}" == "object" ]]; then
+            local iv; iv=$(jq -r '.sub_scores | to_entries[] | select(.value != null and (.value | type) != "number") | .key' "${result_file}" 2>/dev/null)
+            [[ -n "${iv}" ]] && { err "sub_scores contains non-numeric values for keys: ${iv}"; exit 1; }
+            local ek; ek=$(jq -r '.sub_scores | keys[] | select(length == 0)' "${result_file}" 2>/dev/null)
+            [[ -n "${ek}" ]] && { err "sub_scores contains empty string keys"; exit 1; }
+            ok "sub_scores is a valid object ($(jq '.sub_scores | length' "${result_file}" 2>/dev/null) dimension(s))."
+        else err "sub_scores must be an object or null (got ${sst})"; exit 1; fi
     fi
+}
+
+# ── check v0.0.1-B: hybrid_metadata, notebook, teammate_registry, findings, H004 ──
+
+check_hybrid_plan_schema() {
+    local f="$1"; [[ "$(jq 'has("hybrid_metadata")' "${f}" 2>/dev/null)" != "true" ]] && return 0
+    for field in source_plans synthesis_strategy rationale; do
+        local v; v=$(jq -r --arg k "${field}" '.hybrid_metadata[$k]' "${f}" 2>/dev/null)
+        [[ "${v}" == "null" || -z "${v}" ]] && { err "hybrid_metadata missing: ${field}"; exit 1; }
+    done
+    [[ "$(jq '.hybrid_metadata.source_plans|length' "${f}" 2>/dev/null)" == "0" ]] && { err "source_plans must be non-empty"; exit 1; }
+    local s; s=$(jq -r '.hybrid_metadata.synthesis_strategy' "${f}" 2>/dev/null)
+    case "${s}" in combine|refine|contrast) ;; *) err "synthesis_strategy '${s}' invalid"; exit 1 ;; esac; ok "Hybrid plan schema valid."
+}
+
+check_notebook_schema() {
+    local f="$1"; require_jq; [[ ! -f "${f}" ]] && { err "Notebook not found: ${f}"; exit 1; }
+    for field in planner_id rounds_active streak observations dead_ends current_theory; do
+        [[ "$(jq --arg k "${field}" 'has($k)' "${f}" 2>/dev/null)" != "true" ]] && { err "Notebook missing: ${field}"; exit 1; }
+    done; ok "Notebook schema valid."
+}; check_notebook() { check_notebook_schema "$@"; }
+
+check_registry_schema() {
+    local f="$1"; require_jq; [[ ! -f "${f}" ]] && { err "Registry not found: ${f}"; exit 1; }
+    [[ "$(jq 'has("teammates")' "${f}" 2>/dev/null)" != "true" ]] && { err "Registry missing 'teammates'"; exit 1; }
+    local n; n=$(jq '.teammates|length' "${f}" 2>/dev/null)
+    for i in $(seq 0 $((n - 1))); do
+        for sub in id role planner_label status; do
+            local v; v=$(jq -r --argjson i "$i" --arg k "$sub" '.teammates[$i][$k]' "${f}" 2>/dev/null)
+            [[ "${v}" == "null" || -z "${v}" ]] && { err "teammates[$i] missing: ${sub}"; exit 1; }
+        done
+    done; ok "Registry schema valid."
+}; check_teammate_registry() { check_registry_schema "$@"; }
+
+check_findings_schema() {
+    local f="$1"; require_jq
+    for field in round plan_id hypothesis score status timestamp; do
+        [[ "$(jq --arg k "${field}" 'has($k)' "${f}" 2>/dev/null)" != "true" ]] && { err "Findings missing: ${field}"; exit 1; }
+    done; ok "Findings entry schema valid."
+}; check_findings_entry() { check_findings_schema "$@"; }
+
+# H004 simplicity warning (not rejection): warn if plan has > 10 steps
+check_h004_simplicity() {
+    local f="$1"; local n; n=$(jq '.steps|length' "${f}" 2>/dev/null || echo 0)
+    [[ ${n} -gt 10 ]] && echo "WARNING: H004 simplicity — plan has ${n} steps. High complexity."
 }
 
 # ── main ───────────────────────────────────────────────────────────────────────
