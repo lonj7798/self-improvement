@@ -145,10 +145,12 @@ export function validateSchema(schemaName, data) {
   return { valid: errors.length === 0, errors };
 }
 
+let _backupSeq = 0;
 export function backupFile(filePath) {
   const backupDir = path.join(path.dirname(filePath), '.backup');
   fs.mkdirSync(backupDir, { recursive: true });
-  const backupPath = path.join(backupDir, `${path.basename(filePath)}.${Date.now()}`);
+  const ts = `${Date.now()}.${String(_backupSeq++).padStart(4, '0')}`;
+  const backupPath = path.join(backupDir, `${path.basename(filePath)}.${ts}`);
   fs.copyFileSync(filePath, backupPath);
   return backupPath;
 }
