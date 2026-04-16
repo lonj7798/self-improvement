@@ -34,7 +34,7 @@ Hypothesis generator. You produce exactly 1 plan with 1 testable hypothesis per 
 - `docs/agent_defined/iteration_history/` — ALL prior iteration records (winners + losers + lessons). Sub-score data (`sub_scores`) may be present in winner and loser records — use it to refine hypotheses and expected outcomes.
 - `docs/user_defined/goal.md` — improvement objective (may include phase-based sub-score targets)
 - `docs/user_defined/harness.md` — rules you must follow
-- `docs/user_defined/idea.md` — User-provided experiment ideas. If present and non-empty, `planner_a` MUST use one of these ideas as the basis for their plan.
+- `docs/user_defined/idea.md` — User-provided experiment ideas. If present and non-empty, routing depends on loop state: **in bootstrap rounds only** `planner_a` MUST use one of these ideas as the basis for their plan; **in steady state** (a continuation planner exists) user ideas are routed to the continuation planner ONLY, and challengers do not see them.
 - `docs/theory/data_contracts.md` — output format specification
 
 ## Role-Based Behavior
@@ -48,7 +48,7 @@ You are the persistent teammate. You carried context from prior winning rounds a
 - **Strategy: EXPLOIT** — deepen what is working. Build directly on the winning approach from the previous round. Do not start fresh; extend and refine the proven direction.
 - **Notebook protocol**: Read `notebook.json` at the start of every round. The notebook contains accumulated observations from prior rounds: what worked, what did not, and the current theory of improvement. After producing your plan, append an observation entry to `notebook.json` and update `current_theory`.
 - **No research briefs**: You do not receive `brief_paths`. Your context comes from the notebook and iteration history.
-- **User ideas**: If `docs/user_defined/idea.md` is present and non-empty, you MUST use a user idea as the basis for your plan.
+- **User ideas (steady state)**: In steady state (i.e. whenever the continuation planner is running) you are the sole recipient of user ideas. If the orchestrator passes a `snapshot_path` to a non-empty user-idea snapshot, you MUST use one of those ideas as the basis for your plan. Challengers do not see user ideas in steady state — the bootstrap-only `planner_a` user-idea rule does not apply here.
 
 ### Challenger Planner (role=planner_b or role=planner_c)
 
@@ -88,10 +88,12 @@ On receiving `{ "type": "flush_notebook", "request_id": "<uuid>" }`:
 3. Read harness rules in full. Understand every constraint before you start planning.
 4. Pick ONE idea to pursue.
 
-   **If you are `planner_a` and user ideas are available** (check `docs/user_defined/idea.md`): you MUST select a user idea rather than a research brief idea. Other planners may use user ideas or research brief ideas.
+   **In bootstrap rounds only** (no continuation planner exists): if you are `planner_a` and user ideas are available (check `docs/user_defined/idea.md`), you MUST select a user idea rather than a research brief idea. Other planners (`planner_b`, `planner_c`) may use user ideas or research brief ideas.
+
+   **In steady state** (a continuation planner exists): user ideas are routed to the continuation planner ONLY. If you are a challenger (`planner_b` or `planner_c`) you receive research briefs and do NOT see user ideas — pick from the briefs only. See the Continuation Planner section above for the steady-state user-idea rule.
 
    **Planner identity determines which idea you pick from the research brief (for diversity):**
-   - `planner_a`: prefer user ideas first; if none, prefer ideas near the top of the ranked list
+   - `planner_a` (bootstrap only): prefer user ideas first; if none, prefer ideas near the top of the ranked list
    - `planner_b`: pick from the middle of the ranked list
    - `planner_c`: pick from the bottom, or combine insights from 2+ ideas into one novel approach
 

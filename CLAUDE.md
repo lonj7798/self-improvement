@@ -165,7 +165,8 @@ mv docs/user_defined/idea.md docs/agent_defined/idea_snapshots/round_{N}.md
 Immediately recreate an empty `docs/user_defined/idea.md` with the template comment header. The snapshot file at `docs/agent_defined/idea_snapshots/round_{N}.md` is the **source of truth** for this iteration's planners. Any new ideas the user appends to `idea.md` during Steps 6-7a land in the fresh empty file and are picked up by the NEXT iteration's Step 5 — closing the previous lost-update window between snapshot and clear.
 
 - If the file contains ideas (not just the template comment), treat them as **highest-priority input** for this iteration's planners.
-- `planner_a` MUST use a user idea if one is available. Other planners may use user ideas or research brief ideas.
+- **In bootstrap rounds only** (when no continuation planner exists in the teammate registry): `planner_a` MUST use a user idea if one is available. Other planners (`planner_b`, `planner_c`) may use user ideas or research brief ideas.
+- **In steady state** (continuation planner exists in the teammate registry): user ideas are injected into the continuation planner ONLY (see Step 7a, steady-state branch). Challengers (`planner_b`, `planner_c`) receive research briefs and do NOT see user ideas.
 - Log consumed user ideas in the iteration history record with `source: "user_idea"`.
 - If `idea.md` is empty or template-only, skip the rename (no snapshot file is created for this round).
 
@@ -253,9 +254,8 @@ Collect plan files from `docs/plans/round_{n}/plan_planner_{id}.json`.
 **After**: Update `iteration_state.json`: for each planner, set `planning.plans.{planner_id}.status: "completed"`, `planning.plans.{planner_id}.output_path: <path>`. (No idea.md rotation step here — Step 5 already performed the atomic snapshot-rename, so the live `idea.md` is already empty and ready to receive the user's next round of input.) Print:
 ```
 [Iteration {N}] Planning complete. Plans:
-  - planner_a: "{hypothesis}" (family: {approach_family})
-  - planner_b: "{hypothesis}" (family: {approach_family})
-  - planner_c: "{hypothesis}" (family: {approach_family})
+  {for each planner in the teammate registry, ordered by creation time:}
+  - {planner_id}: "{hypothesis}" (family: {approach_family})
 ```
 
 ### Step 7b — Critic Review → Sub-skill: `si-plan-critic`
@@ -274,9 +274,8 @@ If ALL plans are rejected, log a warning, record as `status: "all_plans_rejected
 **After**: Update `iteration_state.json`: for each plan, set `planning.plans.{planner_id}.critic_approved: true|false`. Set `planning.approved_count: {count}`, `planning.completed_at: <now>`. Print:
 ```
 [Iteration {N}] Critic review complete. {approved}/{total} plans approved:
-  - planner_a: {APPROVED|REJECTED} {rejection_reason if rejected}
-  - planner_b: {APPROVED|REJECTED} {rejection_reason if rejected}
-  - planner_c: {APPROVED|REJECTED} {rejection_reason if rejected}
+  {for each plan, in planner_id order:}
+  - {planner_id}: {APPROVED|REJECTED} {rejection_reason if rejected}
 ```
 
 ### Step 7a½ — Hybrid Planner (if hybrid_planner.enabled)
