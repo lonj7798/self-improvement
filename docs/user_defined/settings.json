@@ -17,5 +17,28 @@
   "sealed_files": [],
   "regression_threshold": 0.05,
   "circuit_breaker_threshold": 3,
-  "max_archive_tags": null
+  "max_archive_tags": null,
+  "hybrid_planner": {
+    "enabled": false,
+    "skip_when_all_diverse": true,
+    "redundancy_threshold_pct": 80
+  },
+  "de_risk": {
+    "enabled": true,
+    "timeout_seconds": 60,
+    "reduced_dataset_flag": "--subset 32"
+  },
+  "simplicity": {
+    "max_lines_added": 200,
+    "threshold_pct": 5,
+    "tiebreak_by_lines": true
+  },
+  "retrospection": {
+    "enabled": true,
+    "interval": 3,
+    "plateau_reshape_rounds": 1,
+    "near_miss_threshold_pct": 2,
+    "failure_rate_threshold_pct": 50,
+    "family_concentration_window": 3
+  }
 }

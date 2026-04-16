@@ -82,8 +82,18 @@ export function writeAgentSettings(projectRoot, updates) {
   writeJSON(fp, deepMerge(readAgentSettings(projectRoot), updates));
 }
 
+function userSettingsDefaults() {
+  return {
+    hybrid_planner: { enabled: false, skip_when_all_diverse: true, redundancy_threshold_pct: 80 },
+    de_risk: { enabled: true, timeout_seconds: 60, reduced_dataset_flag: '--subset 32' },
+    simplicity: { max_lines_added: 200, threshold_pct: 5, tiebreak_by_lines: true },
+    retrospection: { enabled: true, interval: 3, plateau_reshape_rounds: 1, near_miss_threshold_pct: 2, failure_rate_threshold_pct: 50, family_concentration_window: 3 },
+  };
+}
+
 export function readUserSettings(projectRoot) {
-  return readJSON(path.join(projectRoot, 'docs', 'user_defined', 'settings.json')) ?? {};
+  const fp = path.join(projectRoot, 'docs', 'user_defined', 'settings.json');
+  return deepMerge(userSettingsDefaults(), readJSON(fp) ?? {});
 }
 
 // [field, expectedType | null, optional?]  null = present-only check (any type including null)
@@ -109,6 +119,7 @@ const SCHEMAS = {
     ['benchmark_direction','string'],['max_iterations','number'],['plateau_threshold',null],
     ['plateau_window',null],['target_value',null],['primary_metric','string'],
     ['sealed_files','array'],['regression_threshold',null],['circuit_breaker_threshold',null],
+    ['hybrid_planner','object'],['de_risk','object'],['simplicity','object'],['retrospection','object'],
   ],
   notebook: [
     ['planner_id',null],['rounds_active','array'],['streak','number'],
